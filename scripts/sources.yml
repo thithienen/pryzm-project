@@ -1,0 +1,71 @@
+# Outputs will be written under scripts/out/
+out_dir: scripts/out
+
+# Default keywords, applied if a source doesn't override them
+default_keywords:
+  - Program Executive Officer
+  - PEO
+  - Golden Dome
+  - missile defense
+  - MDA
+  - homeland defense
+  - interceptor
+  - sensor
+  - acquisition
+  - portfolio
+
+sources:
+  - title: "SSC External Org Chart (Apr 2025)"
+    local_path: "scripts/out/raw/11. External SSC Org Chart Apr2025.pdf"
+    doc_date: "2025-04-30"
+    keywords: ["Program Executive Officer", "PEO"]
+
+  - title: "ASA(ALT) Org Overview (May 15, 2025)"
+    local_path: "scripts/out/raw/20250515-asaalt-org-chart.pdf"
+    doc_date: "2025-05-15"
+    keywords: ["Program Executive Officer", "PEO"]
+
+  - title: "FY2025 Budget Request Overview Book"
+    local_path: "scripts/out/raw/FY2025_Budget_Request_Overview_Book.pdf"
+    doc_date: "2024-03-06"
+    keywords: ["missile defense", "homeland", "acquisition"]
+
+  - title: "DoD Procurement Programs (P-1), FY2025"
+    local_path: "scripts/out/raw/FY2025_p1.pdf"
+    doc_date: "2024-03-01"
+    keywords: ["missile", "defense", "interceptor", "sensor", "PEO", "homeland"]
+
+  - title: "DoD RDT&E Programs (R-1), FY2025"
+    local_path: "scripts/out/raw/FY2025_r1.pdf"
+    doc_date: "2024-03-01"
+    keywords: ["missile", "defense", "homeland", "sensor", "interceptor", "MDA"]
+
+  - title: "DoD RDT&E Programs (R-1), FY2026"
+    local_path: "scripts/out/raw/FY2026_r1.pdf"
+    doc_date: "2025-03-01"
+    keywords: ["missile", "defense", "homeland", "sensor", "interceptor", "MDA"]
+
+  - title: "CRS Insight: The Golden Dome (Iron Dome) for America (Apr 2025)"
+    local_path: "scripts/out/raw/IN12544.1.pdf"
+    doc_date: "2025-04-16"
+    keywords: ["Golden Dome", "Iron Dome", "missile defense"]
+
+  - title: "NAVSEA Org Chart (Jul 2024)"
+    local_path: "scripts/out/raw/navsea-orgchart-July2024.pdf"
+    doc_date: "2024-07-01"
+    keywords: ["Program Executive Officer", "PEO"]
+
+  - title: "NAVSEA Org Chart (Oct 2024)"
+    local_path: "scripts/out/raw/NAVSEA-OrgChart-October2024.pdf"
+    doc_date: "2024-10-01"
+    keywords: ["Program Executive Officer", "PEO"]
+
+  - title: "PEO STRI Org Charts (Sep 10, 2025)"
+    local_path: "scripts/out/raw/PEO STRI Org Charts_09.10.2025.pdf"
+    doc_date: "2025-09-10"
+    keywords: ["Program Executive Officer", "PEO"]
+
+  - title: "CRS: Golden Dome Related Products (Jun 2025)"
+    local_path: "scripts/out/raw/R48584.2.pdf"
+    doc_date: "2025-06-24"
+    keywords: ["Golden Dome", "Iron Dome"]
