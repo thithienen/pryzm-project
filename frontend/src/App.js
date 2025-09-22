@@ -62,18 +62,6 @@ function App() {
   return (
     <div className="app">
       <div className="chat-container">
-        <div className="chat-header">
-          <div className="header-content">
-            <div className="logo">
-              <div className="logo-icon">⚡</div>
-              <span className="logo-text">Pryzm Chat</span>
-            </div>
-            <div className="status-indicator">
-              <div className="status-dot"></div>
-              <span>Online</span>
-            </div>
-          </div>
-        </div>
 
         <div className="messages-container">
           {messages.length === 0 && (
@@ -92,9 +80,6 @@ function App() {
                 </div>
                 <div className="message-content">
                   <div className="message-text">{message.text}</div>
-                  <div className="message-time">
-                    {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </div>
                 </div>
               </div>
             </div>
