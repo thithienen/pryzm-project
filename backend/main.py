@@ -3,6 +3,8 @@ from pydantic import BaseModel
 from typing import List, Optional
 import time
 import re
+import json
+import os
 from llm import openrouter_client
 from retriever import get_retriever
 from settings import OPENROUTER_MODEL
@@ -25,6 +27,14 @@ class AnswerResponse(BaseModel):
     context: List[ContextItem]
     used_model: str
     latency_ms: int
+
+class SourceResponse(BaseModel):
+    doc_id: str
+    title: str
+    doc_date: str
+    url: str
+    pageno: int
+    text: str
 
 app = FastAPI(title="Pryzm Project API", version="1.0.0")
 
@@ -176,6 +186,79 @@ CONTEXT:
     except Exception as e:
         # Log the error (in production, use proper logging)
         print(f"Error in answer_question: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@app.get("/source/{doc_id}/{pageno}", response_model=SourceResponse)
+async def get_source_page(doc_id: str, pageno: int) -> SourceResponse:
+    """
+    Get the full page text and metadata for a specific document and page.
+    
+    Args:
+        doc_id: The document ID from docs.json
+        pageno: The 1-indexed page number
+        
+    Returns:
+        SourceResponse with doc_id, title, doc_date, url, pageno, and full text
+        
+    Raises:
+        HTTPException: 404 if document or page not found
+    """
+    try:
+        # Load docs.json - try multiple possible locations
+        docs_path = None
+        possible_paths = [
+            "docs.json",
+            "backend/docs.json", 
+            os.path.join(os.path.dirname(__file__), "docs.json")
+        ]
+        
+        for path in possible_paths:
+            if os.path.exists(path):
+                docs_path = path
+                break
+                
+        if not docs_path:
+            raise HTTPException(status_code=500, detail="docs.json not found")
+            
+        with open(docs_path, 'r', encoding='utf-8') as f:
+            docs_data = json.load(f)
+        
+        # Find the document by doc_id
+        target_doc = None
+        for doc in docs_data:
+            if doc['id'] == doc_id:
+                target_doc = doc
+                break
+                
+        if not target_doc:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Find the page by pageno
+        target_page = None
+        for page in target_doc['pages']:
+            if page['pageno'] == pageno:
+                target_page = page
+                break
+                
+        if not target_page:
+            raise HTTPException(status_code=404, detail="Page not found")
+        
+        # Return the response
+        return SourceResponse(
+            doc_id=target_doc['id'],
+            title=target_doc['title'],
+            doc_date=target_doc['doc_date'],
+            url=target_doc.get('url', ''),
+            pageno=target_page['pageno'],
+            text=target_page['text']
+        )
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        # Log the error and return 500
+        print(f"Error in get_source_page: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 if __name__ == "__main__":
