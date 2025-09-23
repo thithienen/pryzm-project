@@ -59,6 +59,48 @@ class OpenRouterClient:
         except Exception as e:
             print(f"Unexpected error: {e}")
             return None
+    
+    async def send_messages(self, messages: list, max_tokens: int = 2000, temperature: float = 0.3) -> Optional[str]:
+        """
+        Send a list of messages to the OpenRouter model and return the response text.
+        
+        Args:
+            messages: List of message dictionaries with 'role' and 'content'
+            max_tokens: Maximum tokens for the response
+            temperature: Temperature for response generation
+            
+        Returns:
+            The model's response text, or None if there was an error
+        """
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature
+        }
+        
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=self.headers,
+                    json=payload,
+                    timeout=30.0
+                )
+                response.raise_for_status()
+                
+                data = response.json()
+                return data["choices"][0]["message"]["content"]
+                
+        except httpx.HTTPError as e:
+            print(f"HTTP error occurred: {e}")
+            return None
+        except KeyError as e:
+            print(f"Unexpected response format: {e}")
+            return None
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            return None
 
 # Create a global instance
 openrouter_client = OpenRouterClient()
