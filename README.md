@@ -60,29 +60,6 @@ pryzm-project/
 | `PORT` | `8000` | Server port |
 | `CORS_ORIGINS` | `http://localhost:3000` | Allowed CORS origins (comma-separated) |
 
-## 🚀 Quick Start
-
-1. **Install Dependencies:**
-   ```bash
-   cd backend
-   pip install -r requirements.txt
-   ```
-
-2. **Set Environment Variables:**
-   ```bash
-   export OPENROUTER_API_KEY="your_api_key_here"
-   export DATA_PATH="./data/docs.json"
-   ```
-
-3. **Start the Server:**
-   ```bash
-   python app.py
-   ```
-
-4. **Access API Documentation:**
-   - Swagger UI: `http://localhost:8000/docs`
-   - ReDoc: `http://localhost:8000/redoc`
-
 ## 📡 API Endpoints
 
 ### Root Endpoint
@@ -304,38 +281,3 @@ The document corpus (`data/docs.json`) follows this structure:
   }
 ]
 ```
-
-## ✨ Key Features
-
-### 1. Retrieval-Augmented Generation (RAG)
-- Uses TF-IDF algorithm for document similarity scoring
-- Retrieves top-k most relevant documents
-- Provides context to LLM for answer generation
-- Enforces citation requirements in responses
-
-### 2. Source Document Access
-- Direct access to specific document pages
-- Consistent document IDs across retrieval and source endpoints
-- 1-indexed page numbering for user-friendly access
-
-### 3. Error Handling
-- Consistent error response format
-- Proper HTTP status codes
-- Detailed error messages for debugging
-
-### 4. API Versioning
-- Versioned endpoints under `/v1/` prefix
-- Backward compatibility with legacy endpoints
-- Future-proof API design
-
-### 5. CORS Support
-- Configurable CORS origins
-- Ready for frontend integration
-
-## 🔧 Development Notes
-
-- All endpoints share the same document repository for consistency
-- TF-IDF retrieval and source access use identical document indexing
-- Page numbers are strictly 1-indexed throughout the system
-- Error responses follow a consistent format across all endpoints
-- The system is designed for easy frontend integration with CORS support
