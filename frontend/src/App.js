@@ -100,9 +100,9 @@ function App() {
         <div className="messages-container">
           {messages.length === 0 && (
             <div className="welcome-screen">
-              <div className="welcome-icon">💬</div>
-              <h2>Welcome to Pryzm Chat</h2>
-              <p>Start a conversation and I'll respond to your messages!</p>
+              <div className="welcome-icon">✨</div>
+              <h2>Welcome to Pryzm</h2>
+              <p>Ask questions about your documents and get intelligent answers</p>
             </div>
           )}
           
