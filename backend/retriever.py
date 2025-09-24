@@ -1,28 +1,16 @@
-import json
 import math
 from typing import List, Dict, Any, Tuple
 from collections import Counter, defaultdict
 import re
+from doc_repo import get_doc_repo
 
 
 class TFIDFRetriever:
     """TF-IDF based document retriever for the docs.json corpus."""
     
-    def __init__(self, docs_path: str = None):
+    def __init__(self):
         """Initialize the retriever with the document corpus."""
-        if docs_path is None:
-            # Try to find docs.json in current directory or backend directory
-            import os
-            if os.path.exists("docs.json"):
-                docs_path = "docs.json"
-            elif os.path.exists("backend/docs.json"):
-                docs_path = "backend/docs.json"
-            elif os.path.exists("../docs.json"):
-                docs_path = "../docs.json"
-            else:
-                docs_path = "docs.json"  # fallback, will raise FileNotFoundError
-        
-        self.docs_path = docs_path
+        self.doc_repo = get_doc_repo()
         self.documents = []
         self.doc_index = {}  # Maps (doc_id, page_no) to document index
         self.vocabulary = set()
@@ -33,39 +21,21 @@ class TFIDFRetriever:
         self._build_index()
     
     def _load_documents(self):
-        """Load documents from the JSON file."""
-        try:
-            with open(self.docs_path, 'r', encoding='utf-8') as f:
-                docs_data = json.load(f)
+        """Load documents from the document repository."""
+        # Flatten the documents by pages using doc_repo
+        for page_data in self.doc_repo.iter_pages():
+            document = {
+                'doc_id': page_data['doc_id'],
+                'title': page_data['title'],
+                'url': page_data['url'],
+                'doc_date': page_data['doc_date'],
+                'pageno': page_data['pageno'],
+                'text': page_data['text'],
+                'tokens': self._tokenize(page_data['text'])
+            }
             
-            # Flatten the documents by pages
-            for doc in docs_data:
-                doc_id = doc['id']
-                title = doc['title']
-                url = doc.get('url', '')
-                doc_date = doc['doc_date']
-                
-                for page in doc['pages']:
-                    page_no = page['pageno']
-                    text = page['text']
-                    
-                    document = {
-                        'doc_id': doc_id,
-                        'title': title,
-                        'url': url,
-                        'doc_date': doc_date,
-                        'pageno': page_no,
-                        'text': text,
-                        'tokens': self._tokenize(text)
-                    }
-                    
-                    self.documents.append(document)
-                    self.doc_index[(doc_id, page_no)] = len(self.documents) - 1
-                    
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Could not find documents file: {self.docs_path}")
-        except json.JSONDecodeError:
-            raise ValueError(f"Invalid JSON in documents file: {self.docs_path}")
+            self.documents.append(document)
+            self.doc_index[(page_data['doc_id'], page_data['pageno'])] = len(self.documents) - 1
     
     def _tokenize(self, text: str) -> List[str]:
         """Simple tokenization - convert to lowercase and split on non-alphanumeric."""
