@@ -16,18 +16,26 @@
 }
 
 
+/* Main Layout */
+.main-layout {
+  display: flex;
+  width: 100%;
+  max-width: 1200px;
+  height: 100vh;
+  gap: 0;
+  animation: fadeIn 0.4s ease-out;
+}
+
 /* Chat Container */
 .chat-container {
-  width: 100%;
-  max-width: 800px;
+  flex: 1;
   height: 100vh;
   background: rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(20px);
   border: 1px solid #00ffff;
-  border-radius: 24px;
+  border-radius: 24px 0 0 24px;
   display: flex;
   flex-direction: column;
-  animation: fadeIn 0.4s ease-out;
   position: relative;
   z-index: 1;
   box-shadow: 0 8px 32px rgba(0, 255, 255, 0.2), 0 0 0 1px rgba(0, 255, 255, 0.1);
@@ -429,13 +437,28 @@
 }
 
 /* Responsive Design */
+@media (max-width: 1200px) {
+  .main-layout {
+    max-width: 100%;
+  }
+  
+  .chat-container {
+    border-radius: 24px;
+  }
+}
+
 @media (max-width: 768px) {
   .app {
     padding: 0;
   }
   
+  .main-layout {
+    flex-direction: column;
+  }
+  
   .chat-container {
     height: 100vh;
+    border-radius: 24px;
   }
   
   .messages-container {

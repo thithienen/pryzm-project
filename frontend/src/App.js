@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import './App.css';
 import HealthStatus from './components/HealthStatus';
 import ErrorBanner from './components/ErrorBanner';
+import SourcesPane from './components/SourcesPane';
 import { askQuestion } from './config/api';
 
 function App() {
@@ -95,9 +96,9 @@ function App() {
     <div className="app">
       <HealthStatus />
       <ErrorBanner error={error} onDismiss={handleDismissError} />
-      <div className="chat-container">
-
-        <div className="messages-container">
+      <div className="main-layout">
+        <div className="chat-container">
+          <div className="messages-container">
           {messages.length === 0 && (
             <div className="welcome-screen">
               <div className="welcome-icon">✨</div>
@@ -117,20 +118,6 @@ function App() {
                   {message.sender === 'bot' && message.used_model && (
                     <div className="generation-caption">
                       Generated in {message.generation_time}s via {message.used_model}
-                    </div>
-                  )}
-                  {message.context && message.context.length > 0 && !message.text.includes('Insufficient evidence') && (
-                    <div className="message-context">
-                      <div className="context-label">Sources:</div>
-                      <div className="context-items">
-                        {message.context.map((item, index) => (
-                          <div key={index} className="context-item">
-                            <span className="context-rank">[{item.rank}]</span>
-                            <span className="context-title">{item.title}</span>
-                            <span className="context-page">Page {item.pageno}</span>
-                          </div>
-                        ))}
-                      </div>
                     </div>
                   )}
                 </div>
@@ -153,40 +140,48 @@ function App() {
           )}
           
           <div ref={messagesEndRef} />
-        </div>
+          </div>
 
-        <div className="input-container">
-          <form onSubmit={handleSubmit} className="input-form">
-            <div className="input-wrapper">
-              <textarea
-                ref={inputRef}
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Type your message here..."
-                className="message-input"
-                rows="1"
-                disabled={isGenerating}
-              />
-              <button 
-                type="submit" 
-                className="send-button"
-                disabled={!inputValue.trim() || isGenerating}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                  <path 
-                    d="M7 11L12 6L17 11M12 18V7" 
-                    stroke="currentColor" 
-                    strokeWidth="2" 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round"
-                    transform="rotate(90 12 12)"
-                  />
-                </svg>
-              </button>
-            </div>
-          </form>
+          <div className="input-container">
+            <form onSubmit={handleSubmit} className="input-form">
+              <div className="input-wrapper">
+                <textarea
+                  ref={inputRef}
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder="Type your message here..."
+                  className="message-input"
+                  rows="1"
+                  disabled={isGenerating}
+                />
+                <button 
+                  type="submit" 
+                  className="send-button"
+                  disabled={!inputValue.trim() || isGenerating}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <path 
+                      d="M7 11L12 6L17 11M12 18V7" 
+                      stroke="currentColor" 
+                      strokeWidth="2" 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round"
+                      transform="rotate(90 12 12)"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
+        
+        <SourcesPane 
+          context={lastAnswer?.context || []}
+          isLoading={isGenerating}
+          hasError={!!error}
+          errorMessage={error}
+        />
       </div>
     </div>
   );
