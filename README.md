@@ -261,6 +261,27 @@ Debug endpoint that returns retrieval results without calling the LLM.
 }
 ```
 
+## 🎨 Frontend Features
+
+### Interactive Citation System
+- **Clickable Citations**: `[n]` citations in answers are clickable links that scroll to corresponding sources
+- **Source Highlighting**: Clicking citations highlights the source with a 2-second animation
+- **Citation Validation**: Invalid citations show toast notifications
+- **Debounced Clicks**: 200ms debouncing prevents API spam from rapid clicks
+
+### Source Expansion
+- **Expandable Sources**: Click source badges `[n]` or anywhere on source cards to expand
+- **Full Page Text**: Fetches complete page content via `/v1/source/{doc_id}/{pageno}`
+- **Loading States**: Shows "Loading page text..." during API calls
+- **Error Handling**: Displays retry options for failed requests
+- **Persistent Expansion**: Sources stay expanded (no collapse button)
+
+### User Interface
+- **Citation Warnings**: Alerts for answers without citations or unmapped citations
+- **Generation Metadata**: Shows model, source count, and generation time
+- **Responsive Design**: Fixed horizontal scroll, proper overflow handling
+- **Accessibility**: Keyboard navigation, ARIA labels, focus management
+
 ## 📄 Document Corpus Format
 
 The document corpus (`data/docs.json`) follows this structure:

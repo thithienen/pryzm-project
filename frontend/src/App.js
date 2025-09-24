@@ -1,8 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import './App.css';
 import HealthStatus from './components/HealthStatus';
 import ErrorBanner from './components/ErrorBanner';
 import SourcesPane from './components/SourcesPane';
+import AnswerText from './components/AnswerText';
 import { askQuestion } from './config/api';
 
 function App() {
@@ -11,6 +12,7 @@ function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState(null);
   const [lastAnswer, setLastAnswer] = useState(null);
+  const [highlightedSource, setHighlightedSource] = useState(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -82,6 +84,18 @@ function App() {
     setError(null);
   };
 
+  // Handle citation clicks
+  const handleCitationClick = useCallback((citationNum) => {
+    console.log('🎯 APP: Citation click received:', citationNum);
+    console.log('🎯 APP: Setting highlighted source to:', citationNum);
+    setHighlightedSource(citationNum);
+    // Clear highlight after handling
+    setTimeout(() => {
+      console.log('🎯 APP: Clearing highlighted source');
+      setHighlightedSource(null);
+    }, 100);
+  }, []);
+
   // Auto scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -114,11 +128,16 @@ function App() {
                   {message.sender === 'user' ? '👤' : '🤖'}
                 </div>
                 <div className="message-content">
-                  <div className="message-text">{message.text}</div>
-                  {message.sender === 'bot' && message.used_model && (
-                    <div className="generation-caption">
-                      Generated in {message.generation_time}s via {message.used_model}
-                    </div>
+                  {message.sender === 'bot' ? (
+                    <AnswerText
+                      text={message.text}
+                      context={message.context || []}
+                      onCitationClick={handleCitationClick}
+                      usedModel={message.used_model}
+                      latencyMs={message.latency_ms}
+                    />
+                  ) : (
+                    <div className="message-text">{message.text}</div>
                   )}
                 </div>
               </div>
@@ -181,6 +200,8 @@ function App() {
           isLoading={isGenerating}
           hasError={!!error}
           errorMessage={error}
+          highlightedSource={highlightedSource}
+          onSourceHighlightComplete={() => setHighlightedSource(null)}
         />
       </div>
     </div>

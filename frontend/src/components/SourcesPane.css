@@ -1,6 +1,8 @@
 /* Sources Pane */
 .sources-pane {
   width: 320px;
+  min-width: 320px;
+  max-width: 320px;
   height: 100vh;
   background: rgba(0, 0, 0, 0.8);
   border-left: 1px solid #00ffff;
@@ -10,6 +12,8 @@
   position: relative;
   z-index: 1;
   box-shadow: -4px 0 16px rgba(0, 255, 255, 0.1);
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .sources-header {
@@ -30,6 +34,7 @@
 .sources-content {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 0;
   position: relative;
 }
@@ -109,7 +114,10 @@
   padding: 16px 20px;
   border-bottom: 1px solid rgba(0, 255, 255, 0.1);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  cursor: pointer;
+  position: relative;
+  max-width: 100%;
+  box-sizing: border-box;
+  cursor: default;
 }
 
 .source-card:hover {
@@ -143,12 +151,49 @@
   transform: scale(1.05);
 }
 
+.source-card.highlighted {
+  background: rgba(0, 255, 255, 0.1);
+  border-left: 3px solid #00ffff;
+  animation: highlightPulse 2s ease-out;
+}
+
+@keyframes highlightPulse {
+  0% {
+    background: rgba(0, 255, 255, 0.2);
+    transform: translateX(4px);
+  }
+  100% {
+    background: rgba(0, 255, 255, 0.1);
+    transform: translateX(2px);
+  }
+}
+
+.source-card:focus {
+  outline: 2px solid #00ffff;
+  outline-offset: 2px;
+}
+
+.source-number.clickable {
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  z-index: 10;
+  pointer-events: auto;
+}
+
+.source-number.clickable:hover {
+  background: rgba(0, 255, 255, 0.3);
+  transform: scale(1.1);
+}
+
 .source-content {
   flex: 1;
   min-width: 0;
+  max-width: calc(100% - 44px); /* Account for source number width + gap */
   display: flex;
   flex-direction: column;
   gap: 6px;
+  overflow: hidden;
 }
 
 .source-title {
@@ -183,6 +228,144 @@
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
+}
+
+/* Source URL Indicator */
+.source-url-indicator {
+  color: rgba(0, 255, 255, 0.6);
+}
+
+/* Inline Loading State */
+.source-loading-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: rgba(0, 255, 255, 0.05);
+  border-radius: 4px;
+  font-size: 11px;
+  color: #00ffff;
+}
+
+.inline-spinner {
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgba(0, 255, 255, 0.3);
+  border-top: 1px solid #00ffff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+/* Inline Error State */
+.source-error-inline {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  border-radius: 4px;
+  font-size: 11px;
+  color: #ff6b6b;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.retry-button {
+  background: none;
+  border: 1px solid #ff6b6b;
+  color: #ff6b6b;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.retry-button:hover {
+  background: rgba(255, 107, 107, 0.1);
+}
+
+/* Expanded Source Content */
+.source-expanded {
+  margin-top: 12px;
+  border-top: 1px solid rgba(0, 255, 255, 0.2);
+  padding-top: 12px;
+  animation: expandIn 0.3s ease-out;
+}
+
+@keyframes expandIn {
+  from {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 500px;
+    padding-top: 12px;
+  }
+}
+
+.source-expanded-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  position: relative;
+}
+
+.source-expanded-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.3;
+}
+
+.source-expanded-meta {
+  font-size: 10px;
+  color: #00ffff;
+  opacity: 0.8;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.source-original-link {
+  color: rgba(0, 255, 255, 0.6);
+  cursor: default;
+}
+
+
+.source-expanded-text {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.8);
+  line-height: 1.5;
+  max-height: 300px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  border: 1px solid rgba(0, 255, 255, 0.1);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.source-expanded-text::-webkit-scrollbar {
+  width: 3px;
+}
+
+.source-expanded-text::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.source-expanded-text::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 255, 0.3);
+  border-radius: 2px;
 }
 
 /* Responsive Design */

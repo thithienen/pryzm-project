@@ -1,0 +1,126 @@
+/* Answer Text Container */
+.answer-text-container {
+  position: relative;
+}
+
+/* Citation Warnings */
+.citation-warning {
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.citation-warning.no-citations {
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  color: #ffc107;
+}
+
+.citation-warning.unmapped-citations {
+  background: rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  color: #ff6b6b;
+}
+
+/* Answer Text */
+.answer-text {
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* Citation Links */
+.citation-link {
+  display: inline-block;
+  background: none;
+  border: none;
+  color: #00ffff;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 4px;
+  margin: 0 1px;
+  border-radius: 3px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  text-decoration: none;
+  position: relative;
+}
+
+.citation-link:hover {
+  background: rgba(0, 255, 255, 0.1);
+  transform: translateY(-1px);
+}
+
+.citation-link:focus {
+  outline: 2px solid #00ffff;
+  outline-offset: 2px;
+}
+
+.citation-link:active {
+  transform: translateY(0);
+}
+
+.citation-link.invalid {
+  color: #ff6b6b;
+  cursor: not-allowed;
+}
+
+.citation-link.invalid:hover {
+  background: rgba(255, 107, 107, 0.1);
+  transform: none;
+}
+
+/* Answer Meta */
+.answer-meta {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(0, 255, 255, 0.1);
+  font-size: 11px;
+  color: rgba(0, 255, 255, 0.7);
+  font-style: italic;
+  line-height: 1.4;
+}
+
+/* Toast Notification */
+.citation-toast {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.9);
+  border: 1px solid #ff6b6b;
+  color: #ff6b6b;
+  padding: 12px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  z-index: 1000;
+  backdrop-filter: blur(10px);
+  animation: slideInRight 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .citation-toast {
+    top: 10px;
+    right: 10px;
+    left: 10px;
+    right: 10px;
+  }
+}
