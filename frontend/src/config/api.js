@@ -76,7 +76,7 @@ export const checkLlmHealth = async () => {
 // Answer question function
 export const askQuestion = async (prompt) => {
   try {
-    const response = await apiFetch('/answer', {
+    const response = await apiFetch('/v1/answer', {
       method: 'POST',
       body: JSON.stringify({ prompt })
     });
