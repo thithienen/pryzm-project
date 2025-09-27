@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import './App.css';
-import HealthStatus from './components/HealthStatus';
 import ErrorBanner from './components/ErrorBanner';
 import SourcesPane from './components/SourcesPane';
 import AnswerText from './components/AnswerText';
@@ -108,7 +107,6 @@ function App() {
 
   return (
     <div className="app">
-      <HealthStatus />
       <ErrorBanner error={error} onDismiss={handleDismissError} />
       <div className="main-layout">
         <div className="chat-container">

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import './SourcesPane.css';
 import { getSourcePage } from '../config/api';
+import HealthStatus from './HealthStatus';
 
 const SourcesPane = ({ 
   context = [], 
@@ -277,6 +278,7 @@ const SourcesPane = ({
           </div>
         )}
       </div>
+      <HealthStatus />
     </div>
   );
 };

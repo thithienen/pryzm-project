@@ -3,14 +3,16 @@
   top: 0;
   left: 0;
   right: 0;
-  background: #ff0000;
-  backdrop-filter: blur(20px);
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  backdrop-filter: blur(40px);
   color: #ffffff;
-  padding: 16px 20px;
+  padding: 20px 24px;
   z-index: 1001;
-  box-shadow: 0 4px 16px rgba(255, 0, 0, 0.4);
-  animation: slideDown 0.4s ease-out;
-  border-bottom: 2px solid #ffffff;
+  box-shadow: 
+    0 8px 32px rgba(239, 68, 68, 0.3),
+    0 4px 16px rgba(220, 38, 38, 0.2);
+  animation: slideDown 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 @keyframes slideDown {
@@ -60,27 +62,29 @@
 }
 
 .error-dismiss {
-  background: rgba(255, 255, 255, 0.2);
-  border: 2px solid #ffffff;
-  color: #000000;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 18px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 600;
   line-height: 1;
-  transition: all 0.2s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   flex-shrink: 0;
+  backdrop-filter: blur(20px);
 }
 
 .error-dismiss:hover {
-  background: #ffffff;
-  color: #ff0000;
-  transform: scale(1.1);
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: scale(1.05);
+  box-shadow: 0 4px 16px rgba(255, 255, 255, 0.2);
 }
 
 .error-dismiss:active {
