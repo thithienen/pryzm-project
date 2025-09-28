@@ -209,3 +209,5 @@ __marimo__/
 journal.txt
 plan.txt
 /local
+data/corpus.db-shm
+data/corpus.db-wal
