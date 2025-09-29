@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from sentence_transformers import CrossEncoder
-from embeddings import embed_query
+from llm.embeddings import embed_query
 import json
 
 
@@ -160,7 +160,7 @@ class HybridRetriever:
         
         results = []
         for row in cursor.fetchall():
-            result = {
+                result = {
                 'chunk_id': row['chunk_id'],
                 'doc_id': row['doc_id'],
                 'doc_title': row['doc_title'],
@@ -172,8 +172,8 @@ class HybridRetriever:
                 'text': row['text'],
                 'is_table': bool(row['is_table']),
                 'bm25_score': float(row['score'])
-            }
-            results.append(result)
+                }
+                results.append(result)
         
         return results
     
@@ -314,7 +314,7 @@ class HybridRetriever:
                 results.append(result)
         
         return results
-    
+
     def rerank(
         self, 
         query: str, 

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List
-from retriever import get_retriever
+from llm.retriever import get_retriever
 from schemas import ContextItem, ErrorResponse
 
 router = APIRouter(tags=["debug"])

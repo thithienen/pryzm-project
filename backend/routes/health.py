@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from llm import openrouter_client
+from llm.llm import openrouter_client
 from settings import OPENROUTER_MODEL
 
 router = APIRouter(tags=["health"])

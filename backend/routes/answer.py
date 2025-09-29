@@ -3,8 +3,8 @@ from pydantic import BaseModel
 from typing import List
 import time
 import re
-from llm import openrouter_client
-from retriever import get_retriever
+from llm.llm import openrouter_client
+from llm.retriever import get_retriever
 from settings import OPENROUTER_MODEL
 from schemas import AnswerRequest, AnswerResponse, ContextItem, ErrorResponse
 
