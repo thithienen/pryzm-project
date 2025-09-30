@@ -5,8 +5,9 @@ import time
 import re
 from llm.llm import openrouter_client
 from llm.retriever import get_retriever
+from llm.context_processor import process_context
 from settings import OPENROUTER_MODEL
-from schemas import AnswerRequest, AnswerResponse, ContextItem, ErrorResponse
+from schemas import AnswerRequest, AnswerResponse, EvidenceItem, ErrorResponse
 
 router = APIRouter(tags=["answer"])
 
@@ -14,111 +15,180 @@ router = APIRouter(tags=["answer"])
 @router.post("/answer", response_model=AnswerResponse)
 async def answer_question(request: AnswerRequest) -> AnswerResponse:
     """
-    Answer a question using retrieval-augmented generation.
+    Answer a question using retrieval-augmented generation with hybrid search.
     
     Process:
-    1. Run TF-IDF retrieval over docs.json
-    2. Build numbered context list with doc metadata and snippets
-    3. If no good hits, return "Insufficient evidence" message
+    1. Run hybrid retrieval (BM25 + FAISS + RRF + reranking)
+    2. Process context (merge chunks, format citations)
+    3. Build evidence blocks for LLM with proper citations
     4. Compose system + user messages for LLM
-    5. Call model and capture response
-    6. Enforce citation rule - if no [n] citations, return error message
-    7. Return structured response with answer and context
+    5. Call OpenRouter model and get response
+    6. Validate citations and return structured response
+    
+    Args:
+        request: AnswerRequest with prompt and options
+        
+    Returns:
+        AnswerResponse with answer and cited sources
     """
     start_time = time.time()
     
     try:
-        # Step 1: Run TF-IDF retrieval
+        # Step 1: Run hybrid retrieval
         retriever = get_retriever()
-        retrieved_docs = retriever.retrieve(request.prompt, top_k=10, min_score=0.05)
-        
-        # Step 2: Check if we have good hits
-        if not retrieved_docs:
-            return AnswerResponse(
-                answer_md="Insufficient evidence in current corpus.",
-                context=[],
-                used_model=OPENROUTER_MODEL,
-                latency_ms=int((time.time() - start_time) * 1000)
-            )
-        
-        # Step 3: Build context list
-        context_items = []
-        context_text_parts = []
-        
-        for i, doc in enumerate(retrieved_docs, 1):  # Start numbering from 1
-            context_item = ContextItem(
-                rank=i,  # Use sequential numbering starting from 1
-                doc_id=doc['doc_id'],
-                title=doc['title'],
-                url=doc['url'],
-                doc_date=doc['doc_date'],
-                pageno=doc['pageno'],
-                snippet=doc['snippet']
-            )
-            context_items.append(context_item)
-            
-            # Build context text for LLM - use the same numbering
-            context_text_parts.append(
-                f"[{i}] {doc['title']} (Page {doc['pageno']}, {doc['doc_date']}): {doc['snippet']}"
-            )
-        
-        context_block = "\n\n".join(context_text_parts)
-        
-        # Step 4: Compose messages for LLM
-        system_message = (
-            "ONLY use CONTEXT; end every claim with [n]; if unsupported, say 'insufficient evidence'; "
-            "prefer newer official sources; concise bullets."
+        search_results = retriever.retrieve(
+            request.prompt,
+            top_k=request.max_sources,
+            use_reranking=request.use_reranking
         )
         
+        # Step 2: Check if we have results
+        if not search_results:
+            return AnswerResponse(
+                answer_md="Insufficient evidence in current corpus. No relevant documents found for this query.",
+                sources=[],
+                used_model=OPENROUTER_MODEL,
+                latency_ms=int((time.time() - start_time) * 1000),
+                metadata={
+                    "total_sources": 0,
+                    "reranking_used": request.use_reranking,
+                    "message": "No search results found"
+                }
+            )
+        
+        # Step 3: Process context (merge chunks, format citations, pack within budget)
+        context_data = process_context(
+            search_results,
+            query=request.prompt,
+            max_context_tokens=60000,  # Budget for Claude/GPT-4
+            context_fill_ratio=0.70  # Use 70% for evidence, leave 30% for reasoning
+        )
+        
+        if not context_data['evidence']:
+            return AnswerResponse(
+                answer_md="Insufficient evidence in current corpus after processing.",
+                sources=[],
+                used_model=OPENROUTER_MODEL,
+                latency_ms=int((time.time() - start_time) * 1000),
+                metadata=context_data['metadata']
+            )
+        
+        # Step 4: Build context for LLM with citations
+        evidence_blocks = []
+        for ev in context_data['evidence']:
+            evidence_blocks.append(
+                f"[{ev['evidence_id']}] {ev['citation']}\n{ev['text']}"
+            )
+        
+        context_block = "\n\n".join(evidence_blocks)
+        
+        # Step 5: Compose messages for LLM
+        system_message = """You are a helpful assistant that answers questions using ONLY the provided evidence.
+
+CRITICAL RULES:
+1. ONLY use information from the EVIDENCE blocks below
+2. Cite EVERY claim using [n] where n is the evidence number
+3. If evidence is insufficient, explicitly say "Insufficient evidence"
+4. Prefer newer sources when multiple sources cover the same topic
+5. Use concise, clear language
+6. Format response in markdown with bullet points where appropriate
+
+When citing:
+- Place [n] immediately after the relevant statement
+- You can cite multiple sources like [1][3] if needed
+- Do not invent or assume information not in the evidence"""
+
         user_message = f"""Question: {request.prompt}
 
-CONTEXT:
-{context_block}"""
+EVIDENCE:
+{context_block}
+
+Please answer the question using ONLY the evidence above. Remember to cite every claim with [n]."""
         
         messages = [
             {"role": "system", "content": system_message},
             {"role": "user", "content": user_message}
         ]
         
-        # Step 5: Call model
-        response_text = await openrouter_client.send_messages(messages, max_tokens=2000, temperature=0.3)
+        # Step 6: Call LLM
+        response_text = await openrouter_client.send_messages(
+            messages,
+            max_tokens=4000,
+            temperature=0.3
+        )
         
         if not response_text:
             raise HTTPException(
-                status_code=500, 
+                status_code=500,
                 detail=ErrorResponse(
                     error="LLM Error",
                     detail="Failed to get response from LLM"
                 ).dict()
             )
         
-        # Step 6: Enforce citation rule and validate citation numbers
+        # Step 7: Validate citations
         citation_pattern = r'\[(\d+)\]'
         citations_found = re.findall(citation_pattern, response_text)
         
         if not citations_found:
-            response_text = "Insufficient evidence or missing citations. Refine the corpus or query."
+            # No citations found - return warning
+            response_text = "⚠️ The model did not provide proper citations. Here's the response, but verify against sources:\n\n" + response_text
         else:
-            # Validate that all citation numbers are within valid range
-            max_context_num = len(context_items)
+            # Validate that citation numbers are valid
+            max_evidence_num = len(context_data['evidence'])
             invalid_citations = []
             
-            for citation_str in citations_found:
+            for citation_str in set(citations_found):  # Use set to check unique citations
                 citation_num = int(citation_str)
-                if citation_num < 1 or citation_num > max_context_num:
+                if citation_num < 1 or citation_num > max_evidence_num:
                     invalid_citations.append(citation_num)
             
             if invalid_citations:
-                response_text = "Insufficient evidence or missing citations. Refine the corpus or query."
+                response_text = f"⚠️ The model cited invalid evidence numbers {invalid_citations}. Treating as insufficient evidence.\n\nInsufficient evidence or missing citations. Please refine the query."
         
-        # Step 7: Return structured response
+        # Step 8: Convert evidence to EvidenceItem format
+        evidence_items = []
+        for ev in context_data['evidence']:
+            # Find corresponding search result to get scores
+            source_idx = ev['evidence_id'] - 1
+            orig_result = search_results[source_idx] if source_idx < len(search_results) else {}
+            
+            evidence_item = EvidenceItem(
+                evidence_id=ev['evidence_id'],
+                citation=ev['citation'],
+                doc_id=ev['doc_id'],
+                doc_title=ev['doc_title'],
+                doctype=ev.get('doctype'),
+                page_range=ev['page_range'],
+                section_path=ev.get('section_path', []),
+                text=ev['text'],
+                source_url=ev['source_url'],
+                chunk_ids=ev['chunk_ids'],
+                token_count=ev['token_count'],
+                rerank_score=orig_result.get('rerank_score'),
+                rrf_score=orig_result.get('rrf_score'),
+                bm25_score=orig_result.get('bm25_score'),
+                faiss_score=orig_result.get('faiss_score')
+            )
+            evidence_items.append(evidence_item)
+        
+        # Step 9: Return structured response
         latency_ms = int((time.time() - start_time) * 1000)
         
         return AnswerResponse(
             answer_md=response_text,
-            context=context_items,
+            sources=evidence_items,
             used_model=OPENROUTER_MODEL,
-            latency_ms=latency_ms
+            latency_ms=latency_ms,
+            metadata={
+                "total_sources": len(evidence_items),
+                "total_tokens": context_data['metadata']['total_tokens'],
+                "target_tokens": context_data['metadata']['target_tokens'],
+                "fill_ratio": context_data['metadata']['fill_ratio'],
+                "blocks_truncated": context_data['metadata']['blocks_truncated'],
+                "reranking_used": request.use_reranking,
+                "citations_found": len(set(citations_found)) if citations_found else 0
+            }
         )
         
     except HTTPException:
@@ -127,8 +197,10 @@ CONTEXT:
     except Exception as e:
         # Log the error (in production, use proper logging)
         print(f"Error in answer_question: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
-            status_code=500, 
+            status_code=500,
             detail=ErrorResponse(
                 error="Internal server error",
                 detail=str(e)

@@ -76,13 +76,8 @@ class HybridRetriever:
         """
         self.config = config or RetrievalConfig()
         
-        # Resolve paths relative to project root
-        # __file__ is backend/llm/retriever.py
-        # .parent -> backend/llm/
-        # .parent.parent -> backend/
-        # .parent.parent.parent -> project root
-        llm_dir = Path(__file__).parent
-        backend_dir = llm_dir.parent
+        # Resolve paths relative to backend directory
+        backend_dir = Path(__file__).parent
         project_root = backend_dir.parent
         
         self.db_path = project_root / self.config.db_path
@@ -151,12 +146,6 @@ class HybridRetriever:
         if top_k is None:
             top_k = self.config.bm25_top_k
         
-        # Sanitize query for FTS5 - remove special characters that cause syntax errors
-        # FTS5 uses special characters for operators, so we need to escape or remove them
-        sanitized_query = query.replace('?', '').replace('"', '').strip()
-        if not sanitized_query:
-            return []
-        
         cursor = self.conn.execute("""
             SELECT chunks.rowid, chunks.chunk_id, chunks.doc_id, chunks.doc_title, 
                    chunks.source_url, chunks.date, chunks.doctype, chunks.page,
@@ -167,7 +156,7 @@ class HybridRetriever:
             WHERE fts_chunks MATCH ?
             ORDER BY score
             LIMIT ?
-        """, (sanitized_query, top_k))
+        """, (query, top_k))
         
         results = []
         for row in cursor.fetchall():
