@@ -31,8 +31,9 @@ class RetrievalConfig:
     fusion_top_k: int = 200
     rerank_top_k: int = 32
     
-    # Cross-encoder model
+    # Cross-encoder model (disabled by default for lightweight operation)
     reranker_model: str = "BAAI/bge-reranker-v2-m3"
+    load_reranker: bool = False  # Don't load reranker by default to save memory
 
 
 @dataclass
@@ -127,10 +128,14 @@ class HybridRetriever:
         print(f"[HybridRetriever] Loaded {len(self.chunk_ids)} chunk mappings")
     
     def _load_reranker(self):
-        """Load cross-encoder reranking model"""
-        print(f"[HybridRetriever] Loading reranker model: {self.config.reranker_model}")
-        self.reranker = CrossEncoder(self.config.reranker_model)
-        print(f"[HybridRetriever] Reranker loaded")
+        """Load cross-encoder reranking model (only if enabled)"""
+        if self.config.load_reranker:
+            print(f"[HybridRetriever] Loading reranker model: {self.config.reranker_model}")
+            self.reranker = CrossEncoder(self.config.reranker_model)
+            print(f"[HybridRetriever] Reranker loaded")
+        else:
+            print(f"[HybridRetriever] Reranker disabled - lightweight mode (saves ~1GB memory)")
+            self.reranker = None
     
     def bm25_search(self, query: str, top_k: Optional[int] = None) -> List[Dict[str, Any]]:
         """
@@ -316,7 +321,7 @@ class HybridRetriever:
         return results
 
     def rerank(
-        self, 
+        self,
         query: str, 
         candidates: List[Dict[str, Any]],
         top_k: Optional[int] = None
@@ -339,10 +344,16 @@ class HybridRetriever:
             return []
         
         # Prepare query-text pairs (truncate text for speed)
+        print(f"[Rerank] Preparing {len(candidates)} candidate pairs for reranking...")
         pairs = [(query, c['text'][:2000]) for c in candidates]
         
         # Get reranking scores
+        print(f"[Rerank] Running reranker model on {len(pairs)} pairs (this may take 10-30 seconds)...")
+        import time
+        rerank_start = time.time()
         scores = self.reranker.predict(pairs)
+        rerank_time = time.time() - rerank_start
+        print(f"[Rerank] ✓ Reranking completed in {rerank_time:.2f}s")
         
         # Add scores to candidates
         for candidate, score in zip(candidates, scores):
@@ -384,29 +395,50 @@ class HybridRetriever:
         Returns:
             List of top-ranked search results
         """
+        import time
+        retrieve_start = time.time()
+        
         if top_k is None:
             top_k = self.config.rerank_top_k
         
         # Step 1: BM25 search
+        step_start = time.time()
         bm25_results = self.bm25_search(query)
-        print(f"[Retrieve] BM25 search: {len(bm25_results)} results")
+        step_time = time.time() - step_start
+        print(f"[Retrieve] BM25 search: {len(bm25_results)} results in {step_time:.3f}s")
         
         # Step 2: FAISS semantic search
+        step_start = time.time()
         faiss_results = self.faiss_search(query)
-        print(f"[Retrieve] FAISS search: {len(faiss_results)} results")
+        step_time = time.time() - step_start
+        print(f"[Retrieve] FAISS search: {len(faiss_results)} results in {step_time:.3f}s")
         
         # Step 3: RRF fusion
+        step_start = time.time()
         fused_results = self.rrf_fuse(bm25_results, faiss_results)
-        print(f"[Retrieve] RRF fusion: {len(fused_results)} candidates")
+        step_time = time.time() - step_start
+        print(f"[Retrieve] RRF fusion: {len(fused_results)} candidates in {step_time:.3f}s")
         
         # Step 4: Reranking (optional)
         if use_reranking and self.reranker:
-            final_results = self.rerank(query, fused_results, top_k)
-            print(f"[Retrieve] Reranked: {len(final_results)} final results")
+            # Limit candidates for reranking to improve speed
+            # Reranking is expensive - only rerank top 50 candidates from fusion
+            max_rerank_candidates = min(50, len(fused_results))
+            candidates_to_rerank = fused_results[:max_rerank_candidates]
+            print(f"[Retrieve] Starting reranking of top {len(candidates_to_rerank)} candidates (from {len(fused_results)} fused)...")
+            step_start = time.time()
+            final_results = self.rerank(query, candidates_to_rerank, top_k)
+            step_time = time.time() - step_start
+            print(f"[Retrieve] ✓ Reranked: {len(final_results)} final results in {step_time:.2f}s")
         else:
+            if use_reranking and not self.reranker:
+                print(f"[Retrieve] Reranking requested but reranker not loaded - using RRF results")
             final_results = fused_results[:top_k]
             for rank, result in enumerate(final_results, start=1):
                 result['final_rank'] = rank
+        
+        total_time = time.time() - retrieve_start
+        print(f"[Retrieve] Total retrieval time: {total_time:.2f}s")
         
         return final_results
     

@@ -10,14 +10,14 @@ class AnswerRequest(BaseModel):
     """Request for answer generation"""
     prompt: str
     max_sources: Optional[int] = 15
-    use_reranking: Optional[bool] = True
+    use_reranking: Optional[bool] = False  # Disabled by default for lightweight operation
 
 
 class SourceRequest(BaseModel):
     """Request for source retrieval"""
     query: str
     max_results: Optional[int] = 15
-    use_reranking: Optional[bool] = True
+    use_reranking: Optional[bool] = False  # Disabled by default for lightweight operation
 
 
 # ============================================================================

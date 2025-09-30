@@ -32,18 +32,29 @@ async def answer_question(request: AnswerRequest) -> AnswerResponse:
         AnswerResponse with answer and cited sources
     """
     start_time = time.time()
+    print(f"\n🟢 BACKEND: ===== NEW REQUEST =====")
+    print(f"🟢 BACKEND: Received question: {request.prompt}")
+    print(f"🟢 BACKEND: max_sources={request.max_sources}, use_reranking={request.use_reranking}")
     
     try:
         # Step 1: Run hybrid retrieval
+        print(f"🟢 BACKEND: Step 1 - Getting retriever...")
         retriever = get_retriever()
+        print(f"🟢 BACKEND: Step 1 - Retriever obtained, running search...")
+        step_start = time.time()
         search_results = retriever.retrieve(
             request.prompt,
             top_k=request.max_sources,
             use_reranking=request.use_reranking
         )
+        step_elapsed = time.time() - step_start
+        total_elapsed = time.time() - start_time
+        print(f"🟢 BACKEND: Step 1 - ✅ Search completed in {step_elapsed:.2f}s (total: {total_elapsed:.2f}s) - found {len(search_results) if search_results else 0} results")
         
         # Step 2: Check if we have results
+        print(f"🟢 BACKEND: Step 2 - Checking results...")
         if not search_results:
+            print(f"🟢 BACKEND: Step 2 - ⚠️ No search results found")
             return AnswerResponse(
                 answer_md="Insufficient evidence in current corpus. No relevant documents found for this query.",
                 sources=[],
@@ -57,14 +68,20 @@ async def answer_question(request: AnswerRequest) -> AnswerResponse:
             )
         
         # Step 3: Process context (merge chunks, format citations, pack within budget)
+        print(f"🟢 BACKEND: Step 3 - Processing context...")
+        step_start = time.time()
         context_data = process_context(
             search_results,
             query=request.prompt,
             max_context_tokens=60000,  # Budget for Claude/GPT-4
             context_fill_ratio=0.70  # Use 70% for evidence, leave 30% for reasoning
         )
+        step_elapsed = time.time() - step_start
+        total_elapsed = time.time() - start_time
+        print(f"🟢 BACKEND: Step 3 - ✅ Context processed in {step_elapsed:.2f}s (total: {total_elapsed:.2f}s) - {len(context_data['evidence'])} evidence blocks")
         
         if not context_data['evidence']:
+            print(f"🟢 BACKEND: Step 3 - ⚠️ No evidence after processing")
             return AnswerResponse(
                 answer_md="Insufficient evidence in current corpus after processing.",
                 sources=[],
@@ -74,6 +91,8 @@ async def answer_question(request: AnswerRequest) -> AnswerResponse:
             )
         
         # Step 4: Build context for LLM with citations
+        print(f"🟢 BACKEND: Step 4 - Building evidence blocks...")
+        step_start = time.time()
         evidence_blocks = []
         for ev in context_data['evidence']:
             evidence_blocks.append(
@@ -81,8 +100,13 @@ async def answer_question(request: AnswerRequest) -> AnswerResponse:
             )
         
         context_block = "\n\n".join(evidence_blocks)
+        step_elapsed = time.time() - step_start
+        total_elapsed = time.time() - start_time
+        print(f"🟢 BACKEND: Step 4 - ✅ Built {len(evidence_blocks)} evidence blocks in {step_elapsed:.3f}s (total: {total_elapsed:.2f}s) - {len(context_block)} chars")
         
         # Step 5: Compose messages for LLM
+        print(f"🟢 BACKEND: Step 5 - Composing LLM messages...")
+        step_start = time.time()
         system_message = """You are a helpful assistant that answers questions using ONLY the provided evidence.
 
 CRITICAL RULES:
@@ -109,15 +133,24 @@ Please answer the question using ONLY the evidence above. Remember to cite every
             {"role": "system", "content": system_message},
             {"role": "user", "content": user_message}
         ]
+        step_elapsed = time.time() - step_start
+        total_elapsed = time.time() - start_time
+        print(f"🟢 BACKEND: Step 5 - ✅ Messages composed in {step_elapsed:.3f}s (total: {total_elapsed:.2f}s)")
         
         # Step 6: Call LLM
+        print(f"🟢 BACKEND: Step 6 - Calling LLM (model: {OPENROUTER_MODEL})...")
+        step_start = time.time()
         response_text = await openrouter_client.send_messages(
             messages,
             max_tokens=4000,
             temperature=0.3
         )
+        step_elapsed = time.time() - step_start
+        total_elapsed = time.time() - start_time
+        print(f"🟢 BACKEND: Step 6 - ✅ LLM response received in {step_elapsed:.2f}s (total: {total_elapsed:.2f}s) - {len(response_text) if response_text else 0} chars")
         
         if not response_text:
+            print(f"🟢 BACKEND: Step 6 - ❌ No response from LLM")
             raise HTTPException(
                 status_code=500,
                 detail=ErrorResponse(
@@ -127,6 +160,8 @@ Please answer the question using ONLY the evidence above. Remember to cite every
             )
         
         # Step 7: Validate citations
+        print(f"🟢 BACKEND: Step 7 - Validating citations...")
+        step_start = time.time()
         citation_pattern = r'\[(\d+)\]'
         citations_found = re.findall(citation_pattern, response_text)
         
@@ -146,7 +181,13 @@ Please answer the question using ONLY the evidence above. Remember to cite every
             if invalid_citations:
                 response_text = f"⚠️ The model cited invalid evidence numbers {invalid_citations}. Treating as insufficient evidence.\n\nInsufficient evidence or missing citations. Please refine the query."
         
+        step_elapsed = time.time() - step_start
+        total_elapsed = time.time() - start_time
+        print(f"🟢 BACKEND: Step 7 - ✅ Citations validated in {step_elapsed:.3f}s (total: {total_elapsed:.2f}s) - {len(set(citations_found)) if citations_found else 0} unique citations")
+        
         # Step 8: Convert evidence to EvidenceItem format
+        print(f"🟢 BACKEND: Step 8 - Converting evidence to response format...")
+        step_start = time.time()
         evidence_items = []
         for ev in context_data['evidence']:
             # Find corresponding search result to get scores
@@ -172,8 +213,13 @@ Please answer the question using ONLY the evidence above. Remember to cite every
             )
             evidence_items.append(evidence_item)
         
+        step_elapsed = time.time() - step_start
+        total_elapsed = time.time() - start_time
+        print(f"🟢 BACKEND: Step 8 - ✅ Evidence converted in {step_elapsed:.3f}s (total: {total_elapsed:.2f}s)")
+        
         # Step 9: Return structured response
         latency_ms = int((time.time() - start_time) * 1000)
+        print(f"🟢 BACKEND: Step 9 - Building final response (total latency: {latency_ms}ms / {total_elapsed:.2f}s)...")
         
         return AnswerResponse(
             answer_md=response_text,
@@ -193,10 +239,12 @@ Please answer the question using ONLY the evidence above. Remember to cite every
         
     except HTTPException:
         # Re-raise HTTP exceptions as-is
+        print(f"🟢 BACKEND: ❌ HTTPException occurred, re-raising")
         raise
     except Exception as e:
         # Log the error (in production, use proper logging)
-        print(f"Error in answer_question: {str(e)}")
+        elapsed = time.time() - start_time
+        print(f"🟢 BACKEND: ❌ Exception after {elapsed:.2f}s: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(

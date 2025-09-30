@@ -126,44 +126,60 @@ class OpenRouterClient:
         
         request_timeout = timeout if timeout is not None else self.default_timeout
         
+        import time
+        llm_start = time.time()
+        
+        print(f"🟡 LLM: Preparing to call OpenRouter API")
+        print(f"🟡 LLM: Model: {self.model}")
+        print(f"🟡 LLM: Timeout: {request_timeout}s")
+        print(f"🟡 LLM: Messages: {len(messages)} messages")
+        print(f"🟡 LLM: Total prompt chars: {sum(len(m['content']) for m in messages)}")
+        
         try:
             async with httpx.AsyncClient(timeout=request_timeout) as client:
+                print(f"🟡 LLM: Sending POST request to OpenRouter...")
+                api_start = time.time()
                 response = await client.post(
                     f"{self.base_url}/chat/completions",
                     headers=self.headers,
                     json=payload
                 )
+                api_time = time.time() - api_start
+                print(f"🟡 LLM: ✅ Received response with status: {response.status_code} in {api_time:.2f}s")
                 response.raise_for_status()
                 
                 data = response.json()
                 
                 # Validate response structure
                 if "choices" not in data or len(data["choices"]) == 0:
-                    print(f"Invalid response structure: {data}")
+                    print(f"🟡 LLM: ❌ Invalid response structure: {data}")
                     return None
                 
                 content = data["choices"][0]["message"]["content"]
+                total_time = time.time() - llm_start
+                print(f"🟡 LLM: ✅ Extracted content, length: {len(content)} chars (total LLM time: {total_time:.2f}s)")
                 return content
                 
         except httpx.TimeoutException as e:
-            print(f"Request timeout after {request_timeout}s: {e}")
+            print(f"🟡 LLM: ❌ Request timeout after {request_timeout}s: {e}")
             return None
         except httpx.HTTPStatusError as e:
-            print(f"HTTP status error {e.response.status_code}: {e}")
+            print(f"🟡 LLM: ❌ HTTP status error {e.response.status_code}: {e}")
+            print(f"🟡 LLM: Response body: {e.response.text}")
             if e.response.status_code == 429:
-                print("Rate limit exceeded. Please try again later.")
+                print("🟡 LLM: Rate limit exceeded. Please try again later.")
             return None
         except httpx.HTTPError as e:
-            print(f"HTTP error occurred: {e}")
+            print(f"🟡 LLM: ❌ HTTP error occurred: {e}")
             return None
         except KeyError as e:
-            print(f"Unexpected response format, missing key: {e}")
+            print(f"🟡 LLM: ❌ Unexpected response format, missing key: {e}")
             return None
         except json.JSONDecodeError as e:
-            print(f"Failed to decode JSON response: {e}")
+            print(f"🟡 LLM: ❌ Failed to decode JSON response: {e}")
             return None
         except Exception as e:
-            print(f"Unexpected error in send_messages: {e}")
+            print(f"🟡 LLM: ❌ Unexpected error in send_messages: {e}")
             import traceback
             traceback.print_exc()
             return None

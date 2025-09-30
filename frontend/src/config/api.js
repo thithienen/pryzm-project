@@ -1,8 +1,8 @@
 // API Configuration
 const API_BASE_URL = process.env.REACT_APP_API_BASE || 'http://localhost:8000';
 
-// Global fetch timeout (15 seconds)
-const FETCH_TIMEOUT = 15000;
+// Global fetch timeout (45 seconds - increased for reranking operations)
+const FETCH_TIMEOUT = 45000;
 
 // Create a timeout promise
 const timeoutPromise = (ms) => {
@@ -75,19 +75,40 @@ export const checkLlmHealth = async () => {
 
 // Answer question function
 export const askQuestion = async (prompt) => {
+  console.log('🔵 FRONTEND: Starting askQuestion with prompt:', prompt);
+  console.log('🔵 FRONTEND: API_BASE_URL:', API_BASE_URL);
+  console.log('🔵 FRONTEND: Full endpoint:', `${API_BASE_URL}/v1/answer`);
+  console.log('🔵 FRONTEND: Timeout set to:', FETCH_TIMEOUT, 'ms');
+  
+  const startTime = Date.now();
   try {
+    console.log('🔵 FRONTEND: Making POST request...');
     const response = await apiFetch('/v1/answer', {
       method: 'POST',
       body: JSON.stringify({ prompt })
     });
+    const elapsed = Date.now() - startTime;
+    console.log('🔵 FRONTEND: ✅ Response received after', elapsed, 'ms:', response);
     return {
       status: 'ok',
       data: response
     };
   } catch (error) {
+    const elapsed = Date.now() - startTime;
+    console.error('🔵 FRONTEND: ❌ Error after', elapsed, 'ms:', error);
+    console.error('🔵 FRONTEND: Error message:', error.message);
+    console.error('🔵 FRONTEND: Error stack:', error.stack);
+    
+    let errorMessage = error.message;
+    if (error.message === 'Request timeout') {
+      errorMessage = `Backend unavailable or timed out.\nPlease retry.`;
+    } else if (error.message.includes('Failed to fetch')) {
+      errorMessage = `Backend unavailable or timed out.\nPlease retry.`;
+    }
+    
     return {
       status: 'error',
-      error: error.message
+      error: errorMessage
     };
   }
 };

@@ -33,11 +33,20 @@ app.include_router(source.router)
 # Root endpoint
 @app.get("/")
 async def read_root():
+    print("🟣 APP: Root endpoint hit")
     return {
         "message": "Pryzm Project API", 
         "version": "1.0.0",
         "docs": "/docs"
     }
+
+# Add middleware to log all requests
+@app.middleware("http")
+async def log_requests(request, call_next):
+    print(f"🟣 APP: Incoming {request.method} request to {request.url.path}")
+    response = await call_next(request)
+    print(f"🟣 APP: Response status: {response.status_code}")
+    return response
 
 if __name__ == "__main__":
     import uvicorn

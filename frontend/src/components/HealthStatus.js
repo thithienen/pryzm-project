@@ -42,7 +42,9 @@ const HealthStatus = () => {
 
   const getModelName = () => {
     if (llmStatus.status === 'ok' && llmStatus.data?.model) {
-      return llmStatus.data.model;
+      // Split by '/' and take the last part
+      const modelParts = llmStatus.data.model.split('/');
+      return modelParts[modelParts.length - 1];
     }
     return null;
   };
@@ -58,9 +60,10 @@ const HealthStatus = () => {
       <div className="status-badge">
         <span className="status-icon">{getStatusIcon(llmStatus.status)}</span>
         <span className="status-label">LLM:</span>
-        <span className="status-text">{getStatusText(llmStatus.status)}</span>
-        {getModelName() && (
-          <span className="model-name">({getModelName()})</span>
+        {llmStatus.status === 'ok' && getModelName() ? (
+          <span className="model-name">{getModelName()}</span>
+        ) : (
+          <span className="status-text">{getStatusText(llmStatus.status)}</span>
         )}
       </div>
     </div>
