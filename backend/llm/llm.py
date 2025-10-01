@@ -7,7 +7,7 @@ Supports various models through OpenRouter (Claude, GPT-4, etc.)
 
 import httpx
 import json
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, AsyncIterator
 from settings import OPENROUTER_API_KEY, OPENROUTER_MODEL
 
 
@@ -183,6 +183,113 @@ class OpenRouterClient:
             import traceback
             traceback.print_exc()
             return None
+    
+    async def stream_messages(
+        self,
+        messages: List[Dict[str, str]],
+        max_tokens: int = 2000,
+        temperature: float = 0.3,
+        timeout: Optional[float] = None
+    ) -> AsyncIterator[str]:
+        """
+        Stream messages from the OpenRouter model.
+        
+        This yields text chunks as they're generated, enabling progressive
+        UI updates for better user experience.
+        
+        Args:
+            messages: List of message dictionaries with 'role' and 'content'
+            max_tokens: Maximum tokens for the response (default: 2000)
+            temperature: Temperature for response generation (default: 0.3)
+            timeout: Request timeout in seconds (uses default_timeout if None)
+            
+        Yields:
+            Text chunks as they arrive from the model
+            
+        Example:
+            async for chunk in client.stream_messages(messages):
+                print(chunk, end='', flush=True)
+        """
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": True  # Enable streaming
+        }
+        
+        request_timeout = timeout if timeout is not None else self.default_timeout
+        
+        import time
+        llm_start = time.time()
+        
+        print(f"🟡 LLM: Preparing to STREAM from OpenRouter API")
+        print(f"🟡 LLM: Model: {self.model}")
+        print(f"🟡 LLM: Timeout: {request_timeout}s")
+        print(f"🟡 LLM: Messages: {len(messages)} messages")
+        print(f"🟡 LLM: Total prompt chars: {sum(len(m['content']) for m in messages)}")
+        
+        try:
+            async with httpx.AsyncClient(timeout=request_timeout) as client:
+                print(f"🟡 LLM: Sending streaming POST request to OpenRouter...")
+                api_start = time.time()
+                
+                async with client.stream(
+                    "POST",
+                    f"{self.base_url}/chat/completions",
+                    headers=self.headers,
+                    json=payload
+                ) as response:
+                    response.raise_for_status()
+                    print(f"🟡 LLM: ✅ Stream started in {time.time() - api_start:.2f}s")
+                    
+                    total_chars = 0
+                    async for line in response.aiter_lines():
+                        if not line.strip():
+                            continue
+                        
+                        # SSE format: "data: {json}"
+                        if line.startswith("data: "):
+                            data_str = line[6:]  # Remove "data: " prefix
+                            
+                            # OpenRouter sends "[DONE]" when complete
+                            if data_str == "[DONE]":
+                                total_time = time.time() - llm_start
+                                print(f"\n🟡 LLM: ✅ Stream complete, {total_chars} chars in {total_time:.2f}s")
+                                break
+                            
+                            try:
+                                data = json.loads(data_str)
+                                
+                                # Extract content delta
+                                if "choices" in data and len(data["choices"]) > 0:
+                                    delta = data["choices"][0].get("delta", {})
+                                    content = delta.get("content", "")
+                                    
+                                    if content:
+                                        total_chars += len(content)
+                                        yield content
+                                        
+                            except json.JSONDecodeError as e:
+                                print(f"🟡 LLM: ⚠️ Failed to parse SSE line: {e}")
+                                continue
+                                
+        except httpx.TimeoutException as e:
+            print(f"🟡 LLM: ❌ Stream timeout after {request_timeout}s: {e}")
+            yield ""  # Yield empty to avoid breaking the stream
+        except httpx.HTTPStatusError as e:
+            print(f"🟡 LLM: ❌ HTTP status error {e.response.status_code}: {e}")
+            if e.response.status_code == 429:
+                print("🟡 LLM: Rate limit exceeded. Please try again later.")
+            yield ""
+        except httpx.HTTPError as e:
+            print(f"🟡 LLM: ❌ HTTP error occurred: {e}")
+            yield ""
+        except Exception as e:
+            print(f"🟡 LLM: ❌ Unexpected error in stream_messages: {e}")
+            import traceback
+            traceback.print_exc()
+            yield ""
 
 # Create a global instance
 openrouter_client = OpenRouterClient()

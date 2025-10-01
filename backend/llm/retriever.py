@@ -31,8 +31,9 @@ class RetrievalConfig:
     fusion_top_k: int = 200
     rerank_top_k: int = 32
     
-    # Cross-encoder model
+    # Cross-encoder model (disabled for performance)
     reranker_model: str = "BAAI/bge-reranker-v2-m3"
+    load_reranker: bool = False  # DISABLED: Don't load reranker to save ~1-2s init time and ~1GB memory
 
 
 @dataclass
@@ -132,10 +133,14 @@ class HybridRetriever:
         print(f"[HybridRetriever] Loaded {len(self.chunk_ids)} chunk mappings")
     
     def _load_reranker(self):
-        """Load cross-encoder reranking model"""
-        print(f"[HybridRetriever] Loading reranker model: {self.config.reranker_model}")
-        self.reranker = CrossEncoder(self.config.reranker_model)
-        print(f"[HybridRetriever] Reranker loaded")
+        """Load cross-encoder reranking model (only if enabled)"""
+        if self.config.load_reranker:
+            print(f"[HybridRetriever] Loading reranker model: {self.config.reranker_model}")
+            self.reranker = CrossEncoder(self.config.reranker_model)
+            print(f"[HybridRetriever] Reranker loaded")
+        else:
+            print(f"[HybridRetriever] Reranker DISABLED - skipping model load (saves ~1-2s init + ~1GB memory)")
+            self.reranker = None
     
     def bm25_search(self, query: str, top_k: Optional[int] = None) -> List[Dict[str, Any]]:
         """
@@ -151,23 +156,33 @@ class HybridRetriever:
         if top_k is None:
             top_k = self.config.bm25_top_k
         
-        # Sanitize query for FTS5 - remove special characters that cause syntax errors
-        # FTS5 uses special characters for operators, so we need to escape or remove them
-        sanitized_query = query.replace('?', '').replace('"', '').strip()
+        # Sanitize query for FTS5 - remove/escape special characters
+        # FTS5 special chars: " * ( ) : AND OR NOT NEAR
+        # Remove all special chars and keep only alphanumeric and spaces
+        import re
+        sanitized_query = re.sub(r'[^\w\s]', ' ', query)
+        sanitized_query = ' '.join(sanitized_query.split())  # Normalize whitespace
+        
         if not sanitized_query:
+            print(f"[BM25] Query sanitized to empty string, returning no results")
             return []
         
-        cursor = self.conn.execute("""
-            SELECT chunks.rowid, chunks.chunk_id, chunks.doc_id, chunks.doc_title, 
-                   chunks.source_url, chunks.date, chunks.doctype, chunks.page,
-                   chunks.section_path, chunks.text, chunks.is_table,
-                   bm25(fts_chunks) AS score
-            FROM fts_chunks
-            JOIN chunks ON chunks.rowid = fts_chunks.rowid
-            WHERE fts_chunks MATCH ?
-            ORDER BY score
-            LIMIT ?
-        """, (sanitized_query, top_k))
+        try:
+            cursor = self.conn.execute("""
+                SELECT chunks.rowid, chunks.chunk_id, chunks.doc_id, chunks.doc_title, 
+                       chunks.source_url, chunks.date, chunks.doctype, chunks.page,
+                       chunks.section_path, chunks.text, chunks.is_table,
+                       bm25(fts_chunks) AS score
+                FROM fts_chunks
+                JOIN chunks ON chunks.rowid = fts_chunks.rowid
+                WHERE fts_chunks MATCH ?
+                ORDER BY score
+                LIMIT ?
+            """, (sanitized_query, top_k))
+        except Exception as e:
+            print(f"[BM25] Search failed with query '{sanitized_query}': {e}")
+            print(f"[BM25] Returning empty results")
+            return []
         
         results = []
         for row in cursor.fetchall():
@@ -348,6 +363,14 @@ class HybridRetriever:
         
         if not candidates:
             return []
+        
+        # If reranker is not loaded, return candidates as-is
+        if not self.reranker:
+            print(f"[Retrieve] Reranker not loaded - skipping reranking step")
+            result = candidates[:top_k]
+            for rank, r in enumerate(result, start=1):
+                r['final_rank'] = rank
+            return result
         
         # Prepare query-text pairs (truncate text for speed)
         pairs = [(query, c['text'][:2000]) for c in candidates]

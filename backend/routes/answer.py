@@ -1,8 +1,10 @@
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List
 import time
 import re
+import json
 from llm.llm import openrouter_client
 from llm.retriever import get_retriever
 from llm.context_processor import process_context
@@ -169,8 +171,15 @@ Please answer the question using ONLY the evidence above. Remember to cite every
         citations_found = re.findall(citation_pattern, response_text)
         
         if not citations_found:
-            # No citations found - return warning
-            response_text = "⚠️ The model did not provide proper citations. Here's the response, but verify against sources:\n\n" + response_text
+            # No citations found - replace with proper no-evidence message
+            response_text = """I don't have sufficient supporting evidence in the current corpus to answer this question with proper citations.
+
+Without verifiable sources, I cannot make any claims about this topic. Please try:
+- Rephrasing your question
+- Asking about a different topic covered in the available documents
+- Consulting alternative sources for this information
+
+**Note:** This system only provides answers that can be backed by specific document citations to ensure accuracy and verifiability."""
         else:
             # Validate that citation numbers are valid
             max_evidence_num = len(context_data['evidence'])
@@ -182,7 +191,14 @@ Please answer the question using ONLY the evidence above. Remember to cite every
                     invalid_citations.append(citation_num)
             
             if invalid_citations:
-                response_text = f"⚠️ The model cited invalid evidence numbers {invalid_citations}. Treating as insufficient evidence.\n\nInsufficient evidence or missing citations. Please refine the query."
+                response_text = f"""I attempted to answer this question but encountered citation errors (invalid evidence numbers: {invalid_citations}).
+
+I don't have sufficient supporting evidence in the current corpus to answer this question properly. Please try:
+- Rephrasing your question
+- Asking about a different topic covered in the available documents
+- Consulting alternative sources for this information
+
+**Note:** This system only provides answers that can be backed by specific document citations to ensure accuracy and verifiability."""
         
         step_elapsed = time.time() - step_start
         total_elapsed = time.time() - start_time
@@ -258,3 +274,175 @@ Please answer the question using ONLY the evidence above. Remember to cite every
                 detail=str(e)
             ).dict()
         )
+
+
+@router.post("/answer/stream")
+async def answer_question_stream(request: AnswerRequest):
+    """
+    Stream answer using retrieval-augmented generation with hybrid search.
+    
+    Returns Server-Sent Events (SSE) stream with:
+    - metadata: Initial metadata with sources
+    - content: Text chunks as they're generated
+    - done: Final completion message
+    
+    Args:
+        request: AnswerRequest with prompt and options
+        
+    Returns:
+        StreamingResponse with text/event-stream content type
+    """
+    async def generate_stream():
+        start_time = time.time()
+        print(f"\n🟢 BACKEND: ===== NEW STREAMING REQUEST =====")
+        print(f"🟢 BACKEND: Received question: {request.prompt}")
+        print(f"🟢 BACKEND: max_sources={request.max_sources}, use_reranking={request.use_reranking}")
+        
+        try:
+            # Step 1: Run hybrid retrieval
+            print(f"🟢 BACKEND: Step 1 - Getting retriever...")
+            retriever = get_retriever()
+            print(f"🟢 BACKEND: Step 1 - Retriever obtained, running search...")
+            step_start = time.time()
+            search_results = retriever.retrieve(
+                request.prompt,
+                top_k=request.max_sources,
+                use_reranking=request.use_reranking
+            )
+            step_elapsed = time.time() - step_start
+            total_elapsed = time.time() - start_time
+            print(f"🟢 BACKEND: Step 1 - ✅ Search completed in {step_elapsed:.2f}s (total: {total_elapsed:.2f}s) - found {len(search_results) if search_results else 0} results")
+            
+            # Step 2: Check if we have results
+            if not search_results:
+                # Send error event
+                yield f"data: {json.dumps({'type': 'error', 'message': 'No relevant documents found for this query.'})}\n\n"
+                return
+            
+            # Step 3: Process context
+            print(f"🟢 BACKEND: Step 3 - Processing context...")
+            step_start = time.time()
+            context_data = process_context(
+                search_results,
+                query=request.prompt,
+                max_context_tokens=30000,
+                context_fill_ratio=0.55,
+                max_evidence_blocks=7,
+                max_block_chars=800,
+                text_similarity_threshold=0.85
+            )
+            step_elapsed = time.time() - step_start
+            total_elapsed = time.time() - start_time
+            print(f"🟢 BACKEND: Step 3 - ✅ Context processed in {step_elapsed:.2f}s (total: {total_elapsed:.2f}s) - {len(context_data['evidence'])} evidence blocks")
+            
+            if not context_data['evidence']:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'Insufficient evidence after processing.'})}\n\n"
+                return
+            
+            # Step 4: Convert evidence to EvidenceItem format
+            evidence_items = []
+            for ev in context_data['evidence']:
+                source_idx = ev['evidence_id'] - 1
+                orig_result = search_results[source_idx] if source_idx < len(search_results) else {}
+                
+                evidence_item = {
+                    'evidence_id': ev['evidence_id'],
+                    'citation': ev['citation'],
+                    'doc_id': ev['doc_id'],
+                    'doc_title': ev['doc_title'],
+                    'doctype': ev.get('doctype'),
+                    'date': ev.get('date'),
+                    'page_range': ev['page_range'],
+                    'section_path': ev.get('section_path', []),
+                    'text': ev['text'],
+                    'source_url': ev['source_url'],
+                    'chunk_ids': ev['chunk_ids'],
+                    'token_count': ev['token_count'],
+                    'rerank_score': orig_result.get('rerank_score'),
+                    'rrf_score': orig_result.get('rrf_score'),
+                    'bm25_score': orig_result.get('bm25_score'),
+                    'faiss_score': orig_result.get('faiss_score')
+                }
+                evidence_items.append(evidence_item)
+            
+            # Send metadata with sources first
+            metadata = {
+                'type': 'metadata',
+                'sources': evidence_items,
+                'used_model': OPENROUTER_MODEL,
+                'total_sources': len(evidence_items),
+                'total_tokens': context_data['metadata']['total_tokens'],
+                'target_tokens': context_data['metadata']['target_tokens']
+            }
+            yield f"data: {json.dumps(metadata)}\n\n"
+            
+            # Step 5: Build context for LLM
+            evidence_blocks = []
+            for ev in context_data['evidence']:
+                evidence_blocks.append(
+                    f"[{ev['evidence_id']}] {ev['citation']}\n{ev['text']}"
+                )
+            
+            context_block = "\n\n".join(evidence_blocks)
+            
+            # Step 6: Compose messages for LLM
+            system_message = """You are a helpful assistant that answers questions using ONLY the provided evidence.
+
+CRITICAL RULES:
+1. ONLY use information from the EVIDENCE blocks below
+2. Cite EVERY claim using [n] where n is the evidence number
+3. If evidence is insufficient, explicitly say "Insufficient evidence"
+4. Prefer newer sources when multiple sources cover the same topic
+5. Use concise, clear language
+6. Format response in markdown with bullet points where appropriate
+
+When citing:
+- Place [n] immediately after the relevant statement
+- You can cite multiple sources like [1][3] if needed
+- Do not invent or assume information not in the evidence"""
+
+            user_message = f"""Question: {request.prompt}
+
+EVIDENCE:
+{context_block}
+
+Please answer the question using ONLY the evidence above. Remember to cite every claim with [n]."""
+            
+            messages = [
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": user_message}
+            ]
+            
+            # Step 7: Stream LLM response
+            print(f"🟢 BACKEND: Step 6 - Streaming LLM response (model: {OPENROUTER_MODEL})...")
+            
+            async for chunk in openrouter_client.stream_messages(
+                messages,
+                max_tokens=4000,
+                temperature=0.3
+            ):
+                if chunk:
+                    # Send content chunk
+                    yield f"data: {json.dumps({'type': 'content', 'chunk': chunk})}\n\n"
+            
+            # Send completion
+            total_elapsed = time.time() - start_time
+            print(f"🟢 BACKEND: ✅ Stream complete (total latency: {total_elapsed:.2f}s)")
+            yield f"data: {json.dumps({'type': 'done', 'latency_ms': int(total_elapsed * 1000)})}\n\n"
+            
+        except Exception as e:
+            elapsed = time.time() - start_time
+            print(f"🟢 BACKEND: ❌ Exception after {elapsed:.2f}s: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+    
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"  # Disable nginx buffering
+        }
+    )
