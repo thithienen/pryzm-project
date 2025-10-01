@@ -94,7 +94,8 @@ class OpenRouterClient:
         messages: List[Dict[str, str]],
         max_tokens: int = 2000,
         temperature: float = 0.3,
-        timeout: Optional[float] = None
+        timeout: Optional[float] = None,
+        use_web_search: bool = False
     ) -> Optional[str]:
         """
         Send a list of messages to the OpenRouter model and return the response text.
@@ -110,6 +111,7 @@ class OpenRouterClient:
             temperature: Temperature for response generation (default: 0.3)
                         Lower = more focused, Higher = more creative
             timeout: Request timeout in seconds (uses default_timeout if None)
+            use_web_search: Enable web search by appending :online to model (default: False)
             
         Returns:
             The model's response text, or None if there was an error
@@ -117,8 +119,11 @@ class OpenRouterClient:
         Raises:
             May log errors but returns None instead of raising exceptions
         """
+        # Use web search model if requested
+        model_to_use = f"{self.model}:online" if use_web_search else self.model
+        
         payload = {
-            "model": self.model,
+            "model": model_to_use,
             "messages": messages,
             "max_tokens": max_tokens,
             "temperature": temperature
@@ -130,7 +135,7 @@ class OpenRouterClient:
         llm_start = time.time()
         
         print(f"🟡 LLM: Preparing to call OpenRouter API")
-        print(f"🟡 LLM: Model: {self.model}")
+        print(f"🟡 LLM: Model: {model_to_use} (web_search: {use_web_search})")
         print(f"🟡 LLM: Timeout: {request_timeout}s")
         print(f"🟡 LLM: Messages: {len(messages)} messages")
         print(f"🟡 LLM: Total prompt chars: {sum(len(m['content']) for m in messages)}")
@@ -189,7 +194,8 @@ class OpenRouterClient:
         messages: List[Dict[str, str]],
         max_tokens: int = 2000,
         temperature: float = 0.3,
-        timeout: Optional[float] = None
+        timeout: Optional[float] = None,
+        use_web_search: bool = False
     ) -> AsyncIterator[str]:
         """
         Stream messages from the OpenRouter model.
@@ -202,6 +208,7 @@ class OpenRouterClient:
             max_tokens: Maximum tokens for the response (default: 2000)
             temperature: Temperature for response generation (default: 0.3)
             timeout: Request timeout in seconds (uses default_timeout if None)
+            use_web_search: Enable web search by appending :online to model (default: False)
             
         Yields:
             Text chunks as they arrive from the model
@@ -210,8 +217,11 @@ class OpenRouterClient:
             async for chunk in client.stream_messages(messages):
                 print(chunk, end='', flush=True)
         """
+        # Use web search model if requested
+        model_to_use = f"{self.model}:online" if use_web_search else self.model
+        
         payload = {
-            "model": self.model,
+            "model": model_to_use,
             "messages": messages,
             "max_tokens": max_tokens,
             "temperature": temperature,
@@ -224,7 +234,7 @@ class OpenRouterClient:
         llm_start = time.time()
         
         print(f"🟡 LLM: Preparing to STREAM from OpenRouter API")
-        print(f"🟡 LLM: Model: {self.model}")
+        print(f"🟡 LLM: Model: {model_to_use} (web_search: {use_web_search})")
         print(f"🟡 LLM: Timeout: {request_timeout}s")
         print(f"🟡 LLM: Messages: {len(messages)} messages")
         print(f"🟡 LLM: Total prompt chars: {sum(len(m['content']) for m in messages)}")

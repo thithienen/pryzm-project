@@ -11,6 +11,7 @@ class AnswerRequest(BaseModel):
     prompt: str
     max_sources: Optional[int] = 15
     use_reranking: Optional[bool] = False  # Disabled by default for lightweight operation
+    use_web_search: Optional[bool] = False  # Enable web search via OpenRouter :online models
 
 
 class SourceRequest(BaseModel):
@@ -60,6 +61,7 @@ class AnswerResponse(BaseModel):
     used_model: str
     latency_ms: int
     metadata: dict
+    used_web_search: Optional[bool] = False  # Indicates if web search was used
 
 
 # ============================================================================

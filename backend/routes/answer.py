@@ -36,83 +36,125 @@ async def answer_question(request: AnswerRequest) -> AnswerResponse:
     start_time = time.time()
     print(f"\n🟢 BACKEND: ===== NEW REQUEST =====")
     print(f"🟢 BACKEND: Received question: {request.prompt}")
-    print(f"🟢 BACKEND: max_sources={request.max_sources}, use_reranking={request.use_reranking}")
+    print(f"🟢 BACKEND: max_sources={request.max_sources}, use_reranking={request.use_reranking}, use_web_search={request.use_web_search}")
     
     try:
-        # Step 1: Run hybrid retrieval
-        print(f"🟢 BACKEND: Step 1 - Getting retriever...")
-        retriever = get_retriever()
-        print(f"🟢 BACKEND: Step 1 - Retriever obtained, running search...")
-        step_start = time.time()
-        search_results = retriever.retrieve(
-            request.prompt,
-            top_k=request.max_sources,
-            use_reranking=request.use_reranking
-        )
-        step_elapsed = time.time() - step_start
-        total_elapsed = time.time() - start_time
-        print(f"🟢 BACKEND: Step 1 - ✅ Search completed in {step_elapsed:.2f}s (total: {total_elapsed:.2f}s) - found {len(search_results) if search_results else 0} results")
-        
-        # Step 2: Check if we have results
-        print(f"🟢 BACKEND: Step 2 - Checking results...")
-        if not search_results:
-            print(f"🟢 BACKEND: Step 2 - ⚠️ No search results found")
-            return AnswerResponse(
-                answer_md="Insufficient evidence in current corpus. No relevant documents found for this query.",
-                sources=[],
-                used_model=OPENROUTER_MODEL,
-                latency_ms=int((time.time() - start_time) * 1000),
-                metadata={
-                    "total_sources": 0,
-                    "reranking_used": request.use_reranking,
-                    "message": "No search results found"
-                }
+        # Step 1: Decide on search strategy
+        if request.use_web_search:
+            print(f"🟢 BACKEND: Step 1 - Web search mode enabled, skipping local retrieval")
+            search_results = []
+            context_data = {'evidence': [], 'metadata': {'total_sources': 0, 'message': 'Web search mode'}}
+        else:
+            # Step 1: Run hybrid retrieval
+            print(f"🟢 BACKEND: Step 1 - Getting retriever...")
+            retriever = get_retriever()
+            print(f"🟢 BACKEND: Step 1 - Retriever obtained, running search...")
+            step_start = time.time()
+            search_results = retriever.retrieve(
+                request.prompt,
+                top_k=request.max_sources,
+                use_reranking=request.use_reranking
             )
+            step_elapsed = time.time() - step_start
+            total_elapsed = time.time() - start_time
+            print(f"🟢 BACKEND: Step 1 - ✅ Search completed in {step_elapsed:.2f}s (total: {total_elapsed:.2f}s) - found {len(search_results) if search_results else 0} results")
+            
+            # Step 2: Check if we have results
+            print(f"🟢 BACKEND: Step 2 - Checking results...")
+            if not search_results:
+                print(f"🟢 BACKEND: Step 2 - ⚠️ No search results found")
+                return AnswerResponse(
+                    answer_md="My local knowledge base lacks sufficient context on this topic for a reliable response. Would you like me to search the web for more details?",
+                    sources=[],
+                    used_model=OPENROUTER_MODEL,
+                    latency_ms=int((time.time() - start_time) * 1000),
+                    metadata={
+                        "total_sources": 0,
+                        "reranking_used": request.use_reranking,
+                        "message": "No search results found",
+                        "suggest_web_search": True
+                    },
+                    used_web_search=False
+                )
         
         # Step 3: Process context (merge chunks, format citations, pack within budget)
-        print(f"🟢 BACKEND: Step 3 - Processing context...")
-        step_start = time.time()
-        context_data = process_context(
-            search_results,
-            query=request.prompt,
-            max_context_tokens=30000,  # Reduced from 60000 for faster LLM response
-            context_fill_ratio=0.55,  # Reduced from 70% to 55% for speed
-            max_evidence_blocks=7,  # Limit to 7 evidence blocks max
-            max_block_chars=800,  # Truncate each block to 800 chars max
-            text_similarity_threshold=0.85  # Remove highly similar chunks
-        )
-        step_elapsed = time.time() - step_start
-        total_elapsed = time.time() - start_time
-        print(f"🟢 BACKEND: Step 3 - ✅ Context processed in {step_elapsed:.2f}s (total: {total_elapsed:.2f}s) - {len(context_data['evidence'])} evidence blocks")
-        
-        if not context_data['evidence']:
-            print(f"🟢 BACKEND: Step 3 - ⚠️ No evidence after processing")
-            return AnswerResponse(
-                answer_md="Insufficient evidence in current corpus after processing.",
-                sources=[],
-                used_model=OPENROUTER_MODEL,
-                latency_ms=int((time.time() - start_time) * 1000),
-                metadata=context_data['metadata']
+        if not request.use_web_search:
+            print(f"🟢 BACKEND: Step 3 - Processing context...")
+            step_start = time.time()
+            context_data = process_context(
+                search_results,
+                query=request.prompt,
+                max_context_tokens=30000,  # Reduced from 60000 for faster LLM response
+                context_fill_ratio=0.55,  # Reduced from 70% to 55% for speed
+                max_evidence_blocks=7,  # Limit to 7 evidence blocks max
+                max_block_chars=800,  # Truncate each block to 800 chars max
+                text_similarity_threshold=0.85  # Remove highly similar chunks
             )
+            step_elapsed = time.time() - step_start
+            total_elapsed = time.time() - start_time
+            print(f"🟢 BACKEND: Step 3 - ✅ Context processed in {step_elapsed:.2f}s (total: {total_elapsed:.2f}s) - {len(context_data['evidence'])} evidence blocks")
+            
+            if not context_data['evidence']:
+                print(f"🟢 BACKEND: Step 3 - ⚠️ No evidence after processing")
+                return AnswerResponse(
+                    answer_md="My local knowledge base lacks sufficient context on this topic for a reliable response. Would you like me to search the web for more details?",
+                    sources=[],
+                    used_model=OPENROUTER_MODEL,
+                    latency_ms=int((time.time() - start_time) * 1000),
+                    metadata={**context_data['metadata'], "suggest_web_search": True},
+                    used_web_search=False
+                )
+        else:
+            print(f"🟢 BACKEND: Step 3 - Skipping context processing for web search mode")
         
         # Step 4: Build context for LLM with citations
-        print(f"🟢 BACKEND: Step 4 - Building evidence blocks...")
-        step_start = time.time()
-        evidence_blocks = []
-        for ev in context_data['evidence']:
-            evidence_blocks.append(
-                f"[{ev['evidence_id']}] {ev['citation']}\n{ev['text']}"
-            )
-        
-        context_block = "\n\n".join(evidence_blocks)
-        step_elapsed = time.time() - step_start
-        total_elapsed = time.time() - start_time
-        print(f"🟢 BACKEND: Step 4 - ✅ Built {len(evidence_blocks)} evidence blocks in {step_elapsed:.3f}s (total: {total_elapsed:.2f}s) - {len(context_block)} chars")
-        
-        # Step 5: Compose messages for LLM
-        print(f"🟢 BACKEND: Step 5 - Composing LLM messages...")
-        step_start = time.time()
-        system_message = """You are a helpful assistant that answers questions using ONLY the provided evidence.
+        if request.use_web_search:
+            print(f"🟢 BACKEND: Step 4 - Building web search messages...")
+            step_start = time.time()
+            
+            # Step 5: Compose messages for web search LLM
+            print(f"🟢 BACKEND: Step 5 - Composing web search LLM messages...")
+            system_message = """You are a helpful assistant with access to current web information. Answer the user's question using your web search capabilities to find the most up-to-date and relevant information.
+
+INSTRUCTIONS:
+1. Search the web for current information related to the question
+2. PRIORITIZE reliable sources: government websites (.gov), educational institutions (.edu), and reputable organizations (.org)
+3. Avoid commercial websites (.com) unless they are well-established, authoritative sources
+4. Provide accurate, well-sourced information with proper citations
+5. Include relevant details and context
+6. Format your response in clear markdown
+7. If you find conflicting information, mention the different perspectives
+8. Always cite your sources with clickable links"""
+
+            user_message = f"""Question: {request.prompt}
+
+Please search the web for current information to answer this question comprehensively."""
+            
+            messages = [
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": user_message}
+            ]
+            step_elapsed = time.time() - step_start
+            total_elapsed = time.time() - start_time
+            print(f"🟢 BACKEND: Step 5 - ✅ Web search messages composed in {step_elapsed:.3f}s (total: {total_elapsed:.2f}s)")
+        else:
+            print(f"🟢 BACKEND: Step 4 - Building evidence blocks...")
+            step_start = time.time()
+            evidence_blocks = []
+            for ev in context_data['evidence']:
+                evidence_blocks.append(
+                    f"[{ev['evidence_id']}] {ev['citation']}\n{ev['text']}"
+                )
+            
+            context_block = "\n\n".join(evidence_blocks)
+            step_elapsed = time.time() - step_start
+            total_elapsed = time.time() - start_time
+            print(f"🟢 BACKEND: Step 4 - ✅ Built {len(evidence_blocks)} evidence blocks in {step_elapsed:.3f}s (total: {total_elapsed:.2f}s) - {len(context_block)} chars")
+            
+            # Step 5: Compose messages for LLM
+            print(f"🟢 BACKEND: Step 5 - Composing LLM messages...")
+            step_start = time.time()
+            system_message = """You are a helpful assistant that answers questions using ONLY the provided evidence.
 
 CRITICAL RULES:
 1. ONLY use information from the EVIDENCE blocks below
@@ -127,28 +169,30 @@ When citing:
 - You can cite multiple sources like [1][3] if needed
 - Do not invent or assume information not in the evidence"""
 
-        user_message = f"""Question: {request.prompt}
+            user_message = f"""Question: {request.prompt}
 
 EVIDENCE:
 {context_block}
 
 Please answer the question using ONLY the evidence above. Remember to cite every claim with [n]."""
-        
-        messages = [
-            {"role": "system", "content": system_message},
-            {"role": "user", "content": user_message}
-        ]
-        step_elapsed = time.time() - step_start
-        total_elapsed = time.time() - start_time
-        print(f"🟢 BACKEND: Step 5 - ✅ Messages composed in {step_elapsed:.3f}s (total: {total_elapsed:.2f}s)")
+            
+            messages = [
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": user_message}
+            ]
+            step_elapsed = time.time() - step_start
+            total_elapsed = time.time() - start_time
+            print(f"🟢 BACKEND: Step 5 - ✅ Messages composed in {step_elapsed:.3f}s (total: {total_elapsed:.2f}s)")
         
         # Step 6: Call LLM
-        print(f"🟢 BACKEND: Step 6 - Calling LLM (model: {OPENROUTER_MODEL})...")
+        model_suffix = ":online" if request.use_web_search else ""
+        print(f"🟢 BACKEND: Step 6 - Calling LLM (model: {OPENROUTER_MODEL}{model_suffix}, web_search: {request.use_web_search})...")
         step_start = time.time()
         response_text = await openrouter_client.send_messages(
             messages,
             max_tokens=4000,
-            temperature=0.3
+            temperature=0.3,
+            use_web_search=request.use_web_search
         )
         step_elapsed = time.time() - step_start
         total_elapsed = time.time() - start_time
@@ -172,14 +216,7 @@ Please answer the question using ONLY the evidence above. Remember to cite every
         
         if not citations_found:
             # No citations found - replace with proper no-evidence message
-            response_text = """I don't have sufficient supporting evidence in the current corpus to answer this question with proper citations.
-
-Without verifiable sources, I cannot make any claims about this topic. Please try:
-- Rephrasing your question
-- Asking about a different topic covered in the available documents
-- Consulting alternative sources for this information
-
-**Note:** This system only provides answers that can be backed by specific document citations to ensure accuracy and verifiability."""
+            response_text = "My local knowledge base lacks sufficient context on this topic for a reliable response. Would you like me to search the web for more details?"
         else:
             # Validate that citation numbers are valid
             max_evidence_num = len(context_data['evidence'])
@@ -191,14 +228,7 @@ Without verifiable sources, I cannot make any claims about this topic. Please tr
                     invalid_citations.append(citation_num)
             
             if invalid_citations:
-                response_text = f"""I attempted to answer this question but encountered citation errors (invalid evidence numbers: {invalid_citations}).
-
-I don't have sufficient supporting evidence in the current corpus to answer this question properly. Please try:
-- Rephrasing your question
-- Asking about a different topic covered in the available documents
-- Consulting alternative sources for this information
-
-**Note:** This system only provides answers that can be backed by specific document citations to ensure accuracy and verifiability."""
+                response_text = "My local knowledge base lacks sufficient context on this topic for a reliable response. Would you like me to search the web for more details?"
         
         step_elapsed = time.time() - step_start
         total_elapsed = time.time() - start_time
@@ -208,28 +238,47 @@ I don't have sufficient supporting evidence in the current corpus to answer this
         print(f"🟢 BACKEND: Step 8 - Converting evidence to response format...")
         step_start = time.time()
         evidence_items = []
-        for ev in context_data['evidence']:
-            # Find corresponding search result to get scores
-            source_idx = ev['evidence_id'] - 1
-            orig_result = search_results[source_idx] if source_idx < len(search_results) else {}
-            
+        
+        if not request.use_web_search:
+            for ev in context_data['evidence']:
+                # Find corresponding search result to get scores
+                source_idx = ev['evidence_id'] - 1
+                orig_result = search_results[source_idx] if source_idx < len(search_results) else {}
+                
+                evidence_item = EvidenceItem(
+                    evidence_id=ev['evidence_id'],
+                    citation=ev['citation'],
+                    doc_id=ev['doc_id'],
+                    doc_title=ev['doc_title'],
+                    doctype=ev.get('doctype'),
+                    date=ev.get('date'),
+                    page_range=ev['page_range'],
+                    section_path=ev.get('section_path', []),
+                    text=ev['text'],
+                    source_url=ev['source_url'],
+                    chunk_ids=ev['chunk_ids'],
+                    token_count=ev['token_count'],
+                    rerank_score=orig_result.get('rerank_score'),
+                    rrf_score=orig_result.get('rrf_score'),
+                    bm25_score=orig_result.get('bm25_score'),
+                    faiss_score=orig_result.get('faiss_score')
+                )
+                evidence_items.append(evidence_item)
+        else:
+            # For web search, create a placeholder evidence item indicating web sources were used
             evidence_item = EvidenceItem(
-                evidence_id=ev['evidence_id'],
-                citation=ev['citation'],
-                doc_id=ev['doc_id'],
-                doc_title=ev['doc_title'],
-                doctype=ev.get('doctype'),
-                date=ev.get('date'),
-                page_range=ev['page_range'],
-                section_path=ev.get('section_path', []),
-                text=ev['text'],
-                source_url=ev['source_url'],
-                chunk_ids=ev['chunk_ids'],
-                token_count=ev['token_count'],
-                rerank_score=orig_result.get('rerank_score'),
-                rrf_score=orig_result.get('rrf_score'),
-                bm25_score=orig_result.get('bm25_score'),
-                faiss_score=orig_result.get('faiss_score')
+                evidence_id=1,
+                citation="Web Search Results",
+                doc_id="web_search",
+                doc_title="Current Web Information",
+                doctype="web",
+                date="current",
+                page_range=[1],
+                section_path=["web"],
+                text="Information sourced from current web search results",
+                source_url="web://search",
+                chunk_ids=["web_1"],
+                token_count=len(response_text) if response_text else 0
             )
             evidence_items.append(evidence_item)
         
@@ -248,13 +297,15 @@ I don't have sufficient supporting evidence in the current corpus to answer this
             latency_ms=latency_ms,
             metadata={
                 "total_sources": len(evidence_items),
-                "total_tokens": context_data['metadata']['total_tokens'],
-                "target_tokens": context_data['metadata']['target_tokens'],
-                "fill_ratio": context_data['metadata']['fill_ratio'],
-                "blocks_truncated": context_data['metadata']['blocks_truncated'],
+                "total_tokens": context_data['metadata'].get('total_tokens', 0),
+                "target_tokens": context_data['metadata'].get('target_tokens', 0),
+                "fill_ratio": context_data['metadata'].get('fill_ratio', 0),
+                "blocks_truncated": context_data['metadata'].get('blocks_truncated', 0),
                 "reranking_used": request.use_reranking,
-                "citations_found": len(set(citations_found)) if citations_found else 0
-            }
+                "citations_found": len(set(citations_found)) if citations_found else 0,
+                "web_search_used": request.use_web_search
+            },
+            used_web_search=request.use_web_search
         )
         
     except HTTPException:
@@ -296,72 +347,99 @@ async def answer_question_stream(request: AnswerRequest):
         start_time = time.time()
         print(f"\n🟢 BACKEND: ===== NEW STREAMING REQUEST =====")
         print(f"🟢 BACKEND: Received question: {request.prompt}")
-        print(f"🟢 BACKEND: max_sources={request.max_sources}, use_reranking={request.use_reranking}")
+        print(f"🟢 BACKEND: max_sources={request.max_sources}, use_reranking={request.use_reranking}, use_web_search={request.use_web_search}")
         
         try:
-            # Step 1: Run hybrid retrieval
-            print(f"🟢 BACKEND: Step 1 - Getting retriever...")
-            retriever = get_retriever()
-            print(f"🟢 BACKEND: Step 1 - Retriever obtained, running search...")
-            step_start = time.time()
-            search_results = retriever.retrieve(
-                request.prompt,
-                top_k=request.max_sources,
-                use_reranking=request.use_reranking
-            )
-            step_elapsed = time.time() - step_start
-            total_elapsed = time.time() - start_time
-            print(f"🟢 BACKEND: Step 1 - ✅ Search completed in {step_elapsed:.2f}s (total: {total_elapsed:.2f}s) - found {len(search_results) if search_results else 0} results")
-            
-            # Step 2: Check if we have results
-            if not search_results:
-                # Send error event
-                yield f"data: {json.dumps({'type': 'error', 'message': 'No relevant documents found for this query.'})}\n\n"
-                return
+            # Step 1: Decide on search strategy
+            if request.use_web_search:
+                print(f"🟢 BACKEND: Step 1 - Web search mode enabled, skipping local retrieval")
+                search_results = []
+                context_data = {'evidence': [], 'metadata': {'total_sources': 0, 'message': 'Web search mode'}}
+            else:
+                # Step 1: Run hybrid retrieval
+                print(f"🟢 BACKEND: Step 1 - Getting retriever...")
+                retriever = get_retriever()
+                print(f"🟢 BACKEND: Step 1 - Retriever obtained, running search...")
+                step_start = time.time()
+                search_results = retriever.retrieve(
+                    request.prompt,
+                    top_k=request.max_sources,
+                    use_reranking=request.use_reranking
+                )
+                step_elapsed = time.time() - step_start
+                total_elapsed = time.time() - start_time
+                print(f"🟢 BACKEND: Step 1 - ✅ Search completed in {step_elapsed:.2f}s (total: {total_elapsed:.2f}s) - found {len(search_results) if search_results else 0} results")
+                
+                # Step 2: Check if we have results
+                if not search_results:
+                    # Send error event
+                    yield f"data: {json.dumps({'type': 'error', 'message': 'No relevant documents found for this query.'})}\n\n"
+                    return
             
             # Step 3: Process context
-            print(f"🟢 BACKEND: Step 3 - Processing context...")
-            step_start = time.time()
-            context_data = process_context(
-                search_results,
-                query=request.prompt,
-                max_context_tokens=30000,
-                context_fill_ratio=0.55,
-                max_evidence_blocks=7,
-                max_block_chars=800,
-                text_similarity_threshold=0.85
-            )
-            step_elapsed = time.time() - step_start
-            total_elapsed = time.time() - start_time
-            print(f"🟢 BACKEND: Step 3 - ✅ Context processed in {step_elapsed:.2f}s (total: {total_elapsed:.2f}s) - {len(context_data['evidence'])} evidence blocks")
-            
-            if not context_data['evidence']:
-                yield f"data: {json.dumps({'type': 'error', 'message': 'Insufficient evidence after processing.'})}\n\n"
-                return
+            if not request.use_web_search:
+                print(f"🟢 BACKEND: Step 3 - Processing context...")
+                step_start = time.time()
+                context_data = process_context(
+                    search_results,
+                    query=request.prompt,
+                    max_context_tokens=30000,
+                    context_fill_ratio=0.55,
+                    max_evidence_blocks=7,
+                    max_block_chars=800,
+                    text_similarity_threshold=0.85
+                )
+                step_elapsed = time.time() - step_start
+                total_elapsed = time.time() - start_time
+                print(f"🟢 BACKEND: Step 3 - ✅ Context processed in {step_elapsed:.2f}s (total: {total_elapsed:.2f}s) - {len(context_data['evidence'])} evidence blocks")
+                
+                if not context_data['evidence']:
+                    yield f"data: {json.dumps({'type': 'error', 'message': 'Insufficient evidence after processing.'})}\n\n"
+                    return
+            else:
+                print(f"🟢 BACKEND: Step 3 - Skipping context processing for web search mode")
             
             # Step 4: Convert evidence to EvidenceItem format
             evidence_items = []
-            for ev in context_data['evidence']:
-                source_idx = ev['evidence_id'] - 1
-                orig_result = search_results[source_idx] if source_idx < len(search_results) else {}
-                
+            if not request.use_web_search:
+                for ev in context_data['evidence']:
+                    source_idx = ev['evidence_id'] - 1
+                    orig_result = search_results[source_idx] if source_idx < len(search_results) else {}
+                    
+                    evidence_item = {
+                        'evidence_id': ev['evidence_id'],
+                        'citation': ev['citation'],
+                        'doc_id': ev['doc_id'],
+                        'doc_title': ev['doc_title'],
+                        'doctype': ev.get('doctype'),
+                        'date': ev.get('date'),
+                        'page_range': ev['page_range'],
+                        'section_path': ev.get('section_path', []),
+                        'text': ev['text'],
+                        'source_url': ev['source_url'],
+                        'chunk_ids': ev['chunk_ids'],
+                        'token_count': ev['token_count'],
+                        'rerank_score': orig_result.get('rerank_score'),
+                        'rrf_score': orig_result.get('rrf_score'),
+                        'bm25_score': orig_result.get('bm25_score'),
+                        'faiss_score': orig_result.get('faiss_score')
+                    }
+                    evidence_items.append(evidence_item)
+            else:
+                # For web search, create a placeholder evidence item
                 evidence_item = {
-                    'evidence_id': ev['evidence_id'],
-                    'citation': ev['citation'],
-                    'doc_id': ev['doc_id'],
-                    'doc_title': ev['doc_title'],
-                    'doctype': ev.get('doctype'),
-                    'date': ev.get('date'),
-                    'page_range': ev['page_range'],
-                    'section_path': ev.get('section_path', []),
-                    'text': ev['text'],
-                    'source_url': ev['source_url'],
-                    'chunk_ids': ev['chunk_ids'],
-                    'token_count': ev['token_count'],
-                    'rerank_score': orig_result.get('rerank_score'),
-                    'rrf_score': orig_result.get('rrf_score'),
-                    'bm25_score': orig_result.get('bm25_score'),
-                    'faiss_score': orig_result.get('faiss_score')
+                    'evidence_id': 1,
+                    'citation': 'Web Search Results',
+                    'doc_id': 'web_search',
+                    'doc_title': 'Current Web Information',
+                    'doctype': 'web',
+                    'date': 'current',
+                    'page_range': [1],
+                    'section_path': ['web'],
+                    'text': 'Information sourced from current web search results',
+                    'source_url': 'web://search',
+                    'chunk_ids': ['web_1'],
+                    'token_count': 0
                 }
                 evidence_items.append(evidence_item)
             
@@ -371,22 +449,40 @@ async def answer_question_stream(request: AnswerRequest):
                 'sources': evidence_items,
                 'used_model': OPENROUTER_MODEL,
                 'total_sources': len(evidence_items),
-                'total_tokens': context_data['metadata']['total_tokens'],
-                'target_tokens': context_data['metadata']['target_tokens']
+                'total_tokens': context_data['metadata'].get('total_tokens', 0),
+                'target_tokens': context_data['metadata'].get('target_tokens', 0)
             }
             yield f"data: {json.dumps(metadata)}\n\n"
             
             # Step 5: Build context for LLM
-            evidence_blocks = []
-            for ev in context_data['evidence']:
-                evidence_blocks.append(
-                    f"[{ev['evidence_id']}] {ev['citation']}\n{ev['text']}"
-                )
-            
-            context_block = "\n\n".join(evidence_blocks)
-            
-            # Step 6: Compose messages for LLM
-            system_message = """You are a helpful assistant that answers questions using ONLY the provided evidence.
+            if request.use_web_search:
+                # Step 6: Compose messages for web search LLM
+                system_message = """You are a helpful assistant with access to current web information. Answer the user's question using your web search capabilities to find the most up-to-date and relevant information.
+
+INSTRUCTIONS:
+1. Search the web for current information related to the question
+2. PRIORITIZE reliable sources: government websites (.gov), educational institutions (.edu), and reputable organizations (.org)
+3. Avoid commercial websites (.com) unless they are well-established, authoritative sources
+4. Provide accurate, well-sourced information with proper citations
+5. Include relevant details and context
+6. Format your response in clear markdown
+7. If you find conflicting information, mention the different perspectives
+8. Always cite your sources with clickable links"""
+
+                user_message = f"""Question: {request.prompt}
+
+Please search the web for current information to answer this question comprehensively."""
+            else:
+                evidence_blocks = []
+                for ev in context_data['evidence']:
+                    evidence_blocks.append(
+                        f"[{ev['evidence_id']}] {ev['citation']}\n{ev['text']}"
+                    )
+                
+                context_block = "\n\n".join(evidence_blocks)
+                
+                # Step 6: Compose messages for LLM
+                system_message = """You are a helpful assistant that answers questions using ONLY the provided evidence.
 
 CRITICAL RULES:
 1. ONLY use information from the EVIDENCE blocks below
@@ -401,7 +497,7 @@ When citing:
 - You can cite multiple sources like [1][3] if needed
 - Do not invent or assume information not in the evidence"""
 
-            user_message = f"""Question: {request.prompt}
+                user_message = f"""Question: {request.prompt}
 
 EVIDENCE:
 {context_block}
@@ -414,12 +510,14 @@ Please answer the question using ONLY the evidence above. Remember to cite every
             ]
             
             # Step 7: Stream LLM response
-            print(f"🟢 BACKEND: Step 6 - Streaming LLM response (model: {OPENROUTER_MODEL})...")
+            model_suffix = ":online" if request.use_web_search else ""
+            print(f"🟢 BACKEND: Step 6 - Streaming LLM response (model: {OPENROUTER_MODEL}{model_suffix}, web_search: {request.use_web_search})...")
             
             async for chunk in openrouter_client.stream_messages(
                 messages,
                 max_tokens=4000,
-                temperature=0.3
+                temperature=0.3,
+                use_web_search=request.use_web_search
             ):
                 if chunk:
                     # Send content chunk
