@@ -384,8 +384,9 @@ class HybridRetriever:
         Pipeline:
         1. BM25 search (FTS5)
         2. FAISS semantic search
-        3. RRF fusion
-        4. Cross-encoder reranking (optional)
+        3. Deduplicate by chunk_id (NEW)
+        4. RRF fusion
+        5. Cross-encoder reranking (optional)
         
         Args:
             query: Search query
@@ -406,11 +407,30 @@ class HybridRetriever:
         faiss_results = self.faiss_search(query)
         print(f"[Retrieve] FAISS search: {len(faiss_results)} results")
         
-        # Step 3: RRF fusion
-        fused_results = self.rrf_fuse(bm25_results, faiss_results)
+        # Step 3: Deduplicate by chunk_id before fusion
+        seen_chunks = set()
+        bm25_deduped = []
+        for result in bm25_results:
+            if result['chunk_id'] not in seen_chunks:
+                bm25_deduped.append(result)
+                seen_chunks.add(result['chunk_id'])
+        
+        faiss_deduped = []
+        for result in faiss_results:
+            if result['chunk_id'] not in seen_chunks:
+                faiss_deduped.append(result)
+                seen_chunks.add(result['chunk_id'])
+        
+        deduped_total = len(bm25_deduped) + len(faiss_deduped)
+        original_total = len(bm25_results) + len(faiss_results)
+        if deduped_total < original_total:
+            print(f"[Retrieve] Deduplication: {original_total} → {deduped_total} chunks ({original_total - deduped_total} duplicates removed)")
+        
+        # Step 4: RRF fusion
+        fused_results = self.rrf_fuse(bm25_deduped, faiss_deduped)
         print(f"[Retrieve] RRF fusion: {len(fused_results)} candidates")
         
-        # Step 4: Reranking (optional)
+        # Step 5: Reranking (optional)
         if use_reranking and self.reranker:
             final_results = self.rerank(query, fused_results, top_k)
             print(f"[Retrieve] Reranked: {len(final_results)} final results")

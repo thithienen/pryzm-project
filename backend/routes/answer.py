@@ -73,8 +73,11 @@ async def answer_question(request: AnswerRequest) -> AnswerResponse:
         context_data = process_context(
             search_results,
             query=request.prompt,
-            max_context_tokens=60000,  # Budget for Claude/GPT-4
-            context_fill_ratio=0.70  # Use 70% for evidence, leave 30% for reasoning
+            max_context_tokens=30000,  # Reduced from 60000 for faster LLM response
+            context_fill_ratio=0.55,  # Reduced from 70% to 55% for speed
+            max_evidence_blocks=7,  # Limit to 7 evidence blocks max
+            max_block_chars=800,  # Truncate each block to 800 chars max
+            text_similarity_threshold=0.85  # Remove highly similar chunks
         )
         step_elapsed = time.time() - step_start
         total_elapsed = time.time() - start_time

@@ -37,6 +37,7 @@ class ContextProcessor:
     
     Responsibilities:
     - Merge adjacent chunks from same document
+    - Deduplicate by text similarity
     - Format citations
     - Pack context within token budget
     """
@@ -46,6 +47,9 @@ class ContextProcessor:
         max_context_tokens: int = 32000,
         context_fill_ratio: float = 0.70,
         max_blocks_per_doc: int = 4,
+        max_evidence_blocks: int = 10,
+        max_block_chars: int = None,
+        text_similarity_threshold: float = 0.85,
         encoding_model: str = "cl100k_base"
     ):
         """
@@ -55,11 +59,17 @@ class ContextProcessor:
             max_context_tokens: Maximum tokens available for context
             context_fill_ratio: Target % of tokens to fill (0.60-0.75 recommended)
             max_blocks_per_doc: Maximum merged blocks per document
+            max_evidence_blocks: Maximum total evidence blocks to include
+            max_block_chars: Maximum characters per evidence block (None = no limit)
+            text_similarity_threshold: Threshold for text deduplication (0.0-1.0)
             encoding_model: Tiktoken encoding model (cl100k_base for GPT-3.5/4)
         """
         self.max_context_tokens = max_context_tokens
         self.context_fill_ratio = context_fill_ratio
         self.max_blocks_per_doc = max_blocks_per_doc
+        self.max_evidence_blocks = max_evidence_blocks
+        self.max_block_chars = max_block_chars
+        self.text_similarity_threshold = text_similarity_threshold
         
         # Initialize token encoder
         self.encoder = tiktoken.get_encoding(encoding_model)
@@ -70,6 +80,80 @@ class ContextProcessor:
     def count_tokens(self, text: str) -> int:
         """Count tokens in text using tiktoken"""
         return len(self.encoder.encode(text))
+    
+    def deduplicate_by_text_similarity(
+        self,
+        chunks: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Remove chunks with very similar text content.
+        
+        Uses difflib's SequenceMatcher for fast text comparison.
+        Only compares first 500 chars for efficiency.
+        
+        Args:
+            chunks: List of chunk dictionaries with 'text' field
+            
+        Returns:
+            Deduplicated list of chunks
+        """
+        from difflib import SequenceMatcher
+        
+        if not chunks:
+            return []
+        
+        unique_chunks = []
+        duplicates_removed = 0
+        
+        for chunk in chunks:
+            is_duplicate = False
+            # Only compare first 500 chars for efficiency
+            chunk_text = chunk['text'][:500]
+            
+            for existing in unique_chunks:
+                existing_text = existing['text'][:500]
+                # Calculate similarity ratio
+                ratio = SequenceMatcher(None, chunk_text, existing_text).ratio()
+                
+                if ratio > self.text_similarity_threshold:
+                    is_duplicate = True
+                    duplicates_removed += 1
+                    break
+            
+            if not is_duplicate:
+                unique_chunks.append(chunk)
+        
+        if duplicates_removed > 0:
+            print(f"[ContextProcessor] Text deduplication: {len(chunks)} → {len(unique_chunks)} chunks ({duplicates_removed} similar chunks removed)")
+        
+        return unique_chunks
+    
+    def truncate_text(self, text: str, max_chars: int) -> str:
+        """
+        Truncate text to maximum characters with ellipsis.
+        
+        Args:
+            text: Text to truncate
+            max_chars: Maximum characters
+            
+        Returns:
+            Truncated text
+        """
+        if len(text) <= max_chars:
+            return text
+        
+        # Try to cut at sentence boundary
+        truncated = text[:max_chars]
+        last_period = truncated.rfind('. ')
+        last_newline = truncated.rfind('\n')
+        
+        # Use the latest sentence/paragraph boundary
+        cut_point = max(last_period, last_newline)
+        
+        if cut_point > max_chars * 0.7:  # Only use boundary if it's not too far back
+            return truncated[:cut_point + 1] + "..."
+        else:
+            return truncated + "..."
     
     def merge_adjacent_chunks(
         self,
@@ -230,6 +314,7 @@ class ContextProcessor:
             List of EvidenceBlock objects
         """
         evidence_blocks = []
+        truncated_count = 0
         
         for chunk in merged_chunks:
             citation = self.format_citation(
@@ -245,6 +330,12 @@ class ContextProcessor:
                 # Use starting page for the link
                 source_url = f"{base_url}#page={chunk['page_start']}"
             
+            # Apply text truncation if max_block_chars is set
+            text = chunk['text']
+            if self.max_block_chars and len(text) > self.max_block_chars:
+                text = self.truncate_text(text, self.max_block_chars)
+                truncated_count += 1
+            
             evidence = EvidenceBlock(
                 doc_id=chunk['doc_id'],
                 doc_title=chunk['doc_title'],
@@ -252,14 +343,17 @@ class ContextProcessor:
                 date=chunk.get('date'),
                 page_range=[chunk['page_start'], chunk['page_end']],
                 section_path=chunk.get('section_path', []),
-                text=chunk['text'],
+                text=text,
                 source_url=source_url,
                 chunk_ids=chunk['chunk_ids'],
                 citation=citation,
-                token_count=self.count_tokens(chunk['text'])
+                token_count=self.count_tokens(text)
             )
             
             evidence_blocks.append(evidence)
+        
+        if truncated_count > 0:
+            print(f"[ContextProcessor] Truncated {truncated_count} evidence blocks to {self.max_block_chars} chars")
         
         return evidence_blocks
     
@@ -281,6 +375,9 @@ class ContextProcessor:
         packed_blocks = []
         total_tokens = 0
         blocks_included = 0
+        
+        # Limit to max_evidence_blocks
+        evidence_blocks = evidence_blocks[:self.max_evidence_blocks]
         
         for block in evidence_blocks:
             # Check if adding this block would exceed budget
@@ -331,9 +428,10 @@ class ContextProcessor:
         Complete context processing pipeline.
         
         Pipeline:
-        1. Merge adjacent chunks
-        2. Create evidence blocks with citations
-        3. Pack into token budget
+        1. Deduplicate by text similarity
+        2. Merge adjacent chunks
+        3. Create evidence blocks with citations (includes truncation)
+        4. Pack into token budget
         
         Args:
             search_results: Raw search results from retriever
@@ -342,13 +440,16 @@ class ContextProcessor:
         Returns:
             Packed context ready for LLM
         """
-        # Step 1: Merge adjacent chunks
-        merged = self.merge_adjacent_chunks(search_results)
+        # Step 1: Deduplicate by text similarity
+        deduped = self.deduplicate_by_text_similarity(search_results)
         
-        # Step 2: Create evidence blocks
+        # Step 2: Merge adjacent chunks
+        merged = self.merge_adjacent_chunks(deduped)
+        
+        # Step 3: Create evidence blocks (with truncation)
         evidence_blocks = self.create_evidence_blocks(merged)
         
-        # Step 3: Pack within budget
+        # Step 4: Pack within budget
         packed_context = self.pack_context(evidence_blocks, query)
         
         return packed_context
@@ -359,7 +460,10 @@ def process_context(
     search_results: List[Dict[str, Any]],
     query: Optional[str] = None,
     max_context_tokens: int = 32000,
-    context_fill_ratio: float = 0.70
+    context_fill_ratio: float = 0.70,
+    max_evidence_blocks: int = 10,
+    max_block_chars: int = None,
+    text_similarity_threshold: float = 0.85
 ) -> Dict[str, Any]:
     """
     Convenience function to process search results into packed context.
@@ -369,13 +473,19 @@ def process_context(
         query: Original query
         max_context_tokens: Maximum tokens for context
         context_fill_ratio: Target fill ratio (0.60-0.75)
+        max_evidence_blocks: Maximum total evidence blocks
+        max_block_chars: Maximum characters per block (None = no limit)
+        text_similarity_threshold: Threshold for text deduplication
         
     Returns:
         Packed context dictionary
     """
     processor = ContextProcessor(
         max_context_tokens=max_context_tokens,
-        context_fill_ratio=context_fill_ratio
+        context_fill_ratio=context_fill_ratio,
+        max_evidence_blocks=max_evidence_blocks,
+        max_block_chars=max_block_chars,
+        text_similarity_threshold=text_similarity_threshold
     )
     return processor.process(search_results, query)
 
