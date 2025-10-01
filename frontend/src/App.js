@@ -41,7 +41,7 @@ function App() {
   }, [autoResizeTextarea]);
 
   // Handle sending messages with streaming API calls
-  const handleSendMessage = async (message) => {
+  const handleSendMessage = async (message, useWebSearch = false) => {
     if (!message.trim() || isGenerating) return;
 
     // Clear any existing errors
@@ -197,7 +197,8 @@ function App() {
             latency_ms: finalData.latency_ms,
             generation_time: (finalData.latency_ms / 1000).toFixed(3),
             citation_mapping: citationMapping,
-            streaming: false
+            streaming: false,
+            used_web_search: finalData.used_web_search || false
           };
           
           setMessages(prev => prev.map(msg => 
@@ -227,7 +228,8 @@ function App() {
           // Clear buffer
           streamBufferRef.current = '';
           displayedTextRef.current = '';
-        }
+        },
+        useWebSearch
       );
     } catch (err) {
       // Stop the smooth streaming interval
@@ -285,6 +287,16 @@ function App() {
     e.preventDefault();
     if (!isGenerating) {
       handleSendMessage(inputValue);
+    }
+  };
+
+  // Handle web search retry for the last message
+  const handleWebSearchRetry = () => {
+    if (messages.length > 0) {
+      const lastUserMessage = [...messages].reverse().find(msg => msg.sender === 'user');
+      if (lastUserMessage) {
+        handleSendMessage(lastUserMessage.text, true); // Use web search
+      }
     }
   };
 
@@ -357,6 +369,8 @@ function App() {
                       latencyMs={message.latency_ms}
                       citationMapping={message.citation_mapping || {}}
                       isStreaming={message.streaming || false}
+                      onWebSearchRetry={handleWebSearchRetry}
+                      usedWebSearch={message.used_web_search || false}
                     />
                   ) : (
                     <div className="message-text">{message.text}</div>

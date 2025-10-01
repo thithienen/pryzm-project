@@ -34,6 +34,50 @@
   word-wrap: break-word;
 }
 
+/* Markdown styling within answer text */
+.answer-text h1 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #60a5fa;
+  margin: 16px 0 8px 0;
+  border-bottom: 1px solid rgba(96, 165, 250, 0.3);
+  padding-bottom: 4px;
+}
+
+.answer-text h2 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #60a5fa;
+  margin: 14px 0 6px 0;
+}
+
+.answer-text h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #60a5fa;
+  margin: 12px 0 4px 0;
+}
+
+.answer-text strong {
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.answer-text em {
+  font-style: italic;
+  color: #cbd5e1;
+}
+
+.answer-text a {
+  color: #60a5fa;
+  text-decoration: underline;
+  transition: color 0.2s ease;
+}
+
+.answer-text a:hover {
+  color: #3b82f6;
+}
+
 /* Citation Links */
 .citation-link {
   display: inline-block;
@@ -78,6 +122,48 @@
   background: #991b1b;
   border-color: #b91c1c;
   transform: none;
+}
+
+/* Web Search Suggestion */
+.web-search-suggestion {
+  margin: 16px 0;
+  padding: 12px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.web-search-button {
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  border: none;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.web-search-button:hover {
+  background: linear-gradient(135deg, #2563eb, #1e40af);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.web-search-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
+}
+
+.web-search-button:focus {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
 }
 
 /* Answer Meta */

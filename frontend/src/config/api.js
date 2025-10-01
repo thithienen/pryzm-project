@@ -74,8 +74,9 @@ export const checkLlmHealth = async () => {
 };
 
 // Answer question function (non-streaming)
-export const askQuestion = async (prompt) => {
+export const askQuestion = async (prompt, useWebSearch = false) => {
   console.log('🔵 FRONTEND: Starting askQuestion with prompt:', prompt);
+  console.log('🔵 FRONTEND: useWebSearch:', useWebSearch);
   console.log('🔵 FRONTEND: API_BASE_URL:', API_BASE_URL);
   console.log('🔵 FRONTEND: Full endpoint:', `${API_BASE_URL}/v1/answer`);
   console.log('🔵 FRONTEND: Timeout set to:', FETCH_TIMEOUT, 'ms');
@@ -85,7 +86,10 @@ export const askQuestion = async (prompt) => {
     console.log('🔵 FRONTEND: Making POST request...');
     const response = await apiFetch('/v1/answer', {
       method: 'POST',
-      body: JSON.stringify({ prompt })
+      body: JSON.stringify({ 
+        prompt,
+        use_web_search: useWebSearch
+      })
     });
     const elapsed = Date.now() - startTime;
     console.log('🔵 FRONTEND: ✅ Response received after', elapsed, 'ms:', response);
@@ -114,8 +118,9 @@ export const askQuestion = async (prompt) => {
 };
 
 // Answer question function with streaming
-export const askQuestionStream = async (prompt, onChunk, onComplete, onError) => {
+export const askQuestionStream = async (prompt, onChunk, onComplete, onError, useWebSearch = false) => {
   console.log('🔵 FRONTEND: Starting streaming askQuestion with prompt:', prompt);
+  console.log('🔵 FRONTEND: useWebSearch:', useWebSearch);
   console.log('🔵 FRONTEND: API_BASE_URL:', API_BASE_URL);
   const url = `${API_BASE_URL}/v1/answer/stream`;
   console.log('🔵 FRONTEND: Full endpoint:', url);
@@ -132,7 +137,10 @@ export const askQuestionStream = async (prompt, onChunk, onComplete, onError) =>
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ prompt })
+      body: JSON.stringify({ 
+        prompt,
+        use_web_search: useWebSearch
+      })
     });
     
     if (!response.ok) {

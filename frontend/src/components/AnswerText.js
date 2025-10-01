@@ -8,7 +8,9 @@ const AnswerText = ({
   usedModel,
   latencyMs,
   citationMapping = {},
-  isStreaming = false  // NEW: indicates if answer is still streaming
+  isStreaming = false,  // NEW: indicates if answer is still streaming
+  onWebSearchRetry,     // NEW: callback for web search retry
+  usedWebSearch = false // NEW: indicates if web search was used
 }) => {
   const [toastMessage, setToastMessage] = useState(null);
   const [lastClickTime, setLastClickTime] = useState({});
@@ -45,7 +47,29 @@ const AnswerText = ({
     }
   }, [context.length, lastClickTime, onCitationClick]);
 
-  // Parse text and convert [n] citations to clickable links
+  // Simple markdown parser for basic formatting
+  const parseMarkdown = (text) => {
+    // Handle headers
+    text = text.replace(/^### (.*$)/gm, '<h3>$1</h3>');
+    text = text.replace(/^## (.*$)/gm, '<h2>$1</h2>');
+    text = text.replace(/^# (.*$)/gm, '<h1>$1</h1>');
+    
+    // Handle bold
+    text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    
+    // Handle italic
+    text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    
+    // Handle links [text](url)
+    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    
+    // Handle line breaks
+    text = text.replace(/\n/g, '<br>');
+    
+    return text;
+  };
+
+  // Parse text and convert [n] citations to clickable links + markdown
   const renderTextWithCitations = (text) => {
     const citationPattern = /\[(\d+)\]/g;
     const parts = [];
@@ -53,9 +77,16 @@ const AnswerText = ({
     let match;
 
     while ((match = citationPattern.exec(text)) !== null) {
-      // Add text before citation
+      // Add text before citation (with markdown parsing)
       if (match.index > lastIndex) {
-        parts.push(text.slice(lastIndex, match.index));
+        const textPart = text.slice(lastIndex, match.index);
+        const parsedMarkdown = parseMarkdown(textPart);
+        parts.push(
+          <span 
+            key={`text-${lastIndex}`}
+            dangerouslySetInnerHTML={{ __html: parsedMarkdown }}
+          />
+        );
       }
       
       const citationNum = parseInt(match[1]);
@@ -77,9 +108,16 @@ const AnswerText = ({
       lastIndex = match.index + match[0].length;
     }
     
-    // Add remaining text
+    // Add remaining text (with markdown parsing)
     if (lastIndex < text.length) {
-      parts.push(text.slice(lastIndex));
+      const textPart = text.slice(lastIndex);
+      const parsedMarkdown = parseMarkdown(textPart);
+      parts.push(
+        <span 
+          key={`text-${lastIndex}`}
+          dangerouslySetInnerHTML={{ __html: parsedMarkdown }}
+        />
+      );
     }
     
     return parts;
@@ -87,11 +125,13 @@ const AnswerText = ({
 
   // Check for citation warnings
   const citationPattern = /\[(\d+)\]/g;
+
+  // Check if this is a "no evidence" response that suggests web search
   const citationsFound = text.match(citationPattern) || [];
-  const validCitations = citationsFound.filter(citation => {
-    const num = parseInt(citation.match(/\d+/)[0]);
-    return num >= 1 && num <= context.length;
-  });
+  const hasNoCitations = citationsFound.length === 0;
+  
+  // Simple logic: if no citations and not already a web search, show web search button
+  const suggestsWebSearch = !isStreaming && !usedWebSearch && hasNoCitations;
 
   // No need for warnings - backend replaces response text when citations are missing
   // const showNoCitationsWarning = !isStreaming && citationsFound.length === 0;
@@ -106,10 +146,25 @@ const AnswerText = ({
         {renderTextWithCitations(text)}
       </div>
       
+      {/* Web search button for no evidence responses */}
+      {suggestsWebSearch && onWebSearchRetry && (
+        <div className="web-search-suggestion">
+          <button 
+            className="web-search-button"
+            onClick={onWebSearchRetry}
+            aria-label="Search the web for current information"
+          >
+            🌐 Search the Web
+          </button>
+        </div>
+      )}
+      
       {/* Meta information */}
-      {usedModel && context.length > 0 && (
+      {usedModel && (
         <div className="answer-meta">
-          Generated via {usedModel}; {context.length} sources; {latencyMs ? `generated in ${(latencyMs / 1000).toFixed(3)}s` : ''}
+          Generated via {usedModel}{usedWebSearch ? ' (with web search)' : ''}
+          {context.length > 0 && `; ${context.length} sources`}
+          {latencyMs && `; generated in ${(latencyMs / 1000).toFixed(3)}s`}
         </div>
       )}
       
