@@ -6,7 +6,8 @@ const AnswerText = ({
   context = [], 
   onCitationClick,
   usedModel,
-  latencyMs 
+  latencyMs,
+  citationMapping = {}
 }) => {
   const [toastMessage, setToastMessage] = useState(null);
   const [lastClickTime, setLastClickTime] = useState({});
@@ -26,7 +27,7 @@ const AnswerText = ({
     
     setLastClickTime(prev => ({ ...prev, [citationNum]: now }));
     
-    // Check if citation exists in context
+    // Check if citation exists in context (using renumbered citations)
     if (citationNum < 1 || citationNum > context.length) {
       console.warn('⚠️ Invalid citation:', citationNum, 'Context length:', context.length);
       setToastMessage(`Source [${citationNum}] not found.`);
@@ -34,8 +35,8 @@ const AnswerText = ({
       return;
     }
     
-    // Call the citation click handler
-    console.log('📞 Calling onCitationClick with:', citationNum);
+    // Call the citation click handler with the renumbered citation
+    console.log('📞 Calling onCitationClick with renumbered citation:', citationNum);
     if (onCitationClick) {
       onCitationClick(citationNum);
     } else {

@@ -65,21 +65,52 @@ function App() {
       if (response.status === 'ok') {
         // Map sources to context format for the frontend
         const sources = response.data.sources || [];
+        const answerText = response.data.answer_md || '';
         
         console.log('📊 SOURCES: Total sources received:', sources.length);
         console.log('📊 SOURCES: First source:', sources[0]);
         
-        // Map all sources (no filtering)
-        const context = sources.map(source => {
+        // Extract citation numbers from the answer text
+        const citationPattern = /\[(\d+)\]/g;
+        const citationsInText = [];
+        let match;
+        while ((match = citationPattern.exec(answerText)) !== null) {
+          const citationNum = parseInt(match[1]);
+          if (!citationsInText.includes(citationNum)) {
+            citationsInText.push(citationNum);
+          }
+        }
+        
+        console.log('📊 CITATIONS: Found in text:', citationsInText);
+        
+        // Filter sources to only include those referenced in the text
+        const filteredSources = sources.filter(source => 
+          citationsInText.includes(source.evidence_id)
+        );
+        
+        console.log('📊 SOURCES: Filtered sources:', filteredSources.length);
+        
+        // Create a mapping from original citation numbers to new sequential numbers
+        const citationMapping = {};
+        citationsInText.forEach((originalNum, index) => {
+          citationMapping[originalNum] = index + 1;
+        });
+        
+        console.log('📊 MAPPING: Citation mapping:', citationMapping);
+        
+        // Map filtered sources with renumbered ranks
+        const context = filteredSources.map((source, index) => {
           console.log('📊 SOURCES: Mapping source:', {
             evidence_id: source.evidence_id,
             doc_id: source.doc_id,
             title: source.doc_title,
-            page_range: source.page_range
+            page_range: source.page_range,
+            new_rank: index + 1
           });
           
           return {
-            rank: source.evidence_id,
+            rank: index + 1, // New sequential rank
+            original_rank: source.evidence_id, // Keep original for reference
             doc_id: source.doc_id,
             title: source.doc_title,
             url: source.source_url || '',
@@ -91,15 +122,25 @@ function App() {
         
         console.log('📊 SOURCES: Mapped context:', context);
         
+        // Update the answer text to use new citation numbers
+        let updatedAnswerText = answerText;
+        Object.entries(citationMapping).forEach(([originalNum, newNum]) => {
+          const regex = new RegExp(`\\[${originalNum}\\]`, 'g');
+          updatedAnswerText = updatedAnswerText.replace(regex, `[${newNum}]`);
+        });
+        
+        console.log('📊 TEXT: Updated answer text with new citations:', updatedAnswerText);
+        
         const botMessage = {
           id: Date.now() + 1,
-          text: response.data.answer_md,
+          text: updatedAnswerText,
           sender: 'bot',
           timestamp: new Date(),
           context: context,
           used_model: response.data.used_model,
           latency_ms: response.data.latency_ms,
-          generation_time: (response.data.latency_ms / 1000).toFixed(3)
+          generation_time: (response.data.latency_ms / 1000).toFixed(3),
+          citation_mapping: citationMapping
         };
         setMessages(prev => [...prev, botMessage]);
         setLastAnswer(botMessage);
@@ -182,6 +223,7 @@ function App() {
                       onCitationClick={handleCitationClick}
                       usedModel={message.used_model}
                       latencyMs={message.latency_ms}
+                      citationMapping={message.citation_mapping || {}}
                     />
                   ) : (
                     <div className="message-text">{message.text}</div>
