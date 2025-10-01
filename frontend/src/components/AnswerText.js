@@ -7,7 +7,8 @@ const AnswerText = ({
   onCitationClick,
   usedModel,
   latencyMs,
-  citationMapping = {}
+  citationMapping = {},
+  isStreaming = false  // NEW: indicates if answer is still streaming
 }) => {
   const [toastMessage, setToastMessage] = useState(null);
   const [lastClickTime, setLastClickTime] = useState({});
@@ -92,23 +93,13 @@ const AnswerText = ({
     return num >= 1 && num <= context.length;
   });
 
-  const showNoCitationsWarning = citationsFound.length === 0;
-  const showUnmappedWarning = citationsFound.length > 0 && validCitations.length === 0;
+  // No need for warnings - backend replaces response text when citations are missing
+  // const showNoCitationsWarning = !isStreaming && citationsFound.length === 0;
+  // const showUnmappedWarning = !isStreaming && citationsFound.length > 0 && validCitations.length === 0;
 
   return (
     <div className="answer-text-container">
-      {/* Citation warnings */}
-      {showNoCitationsWarning && (
-        <div className="citation-warning no-citations">
-          This response contains no citations and may not meet project standards.
-        </div>
-      )}
-      
-      {showUnmappedWarning && (
-        <div className="citation-warning unmapped-citations">
-          Citations did not map to returned sources.
-        </div>
-      )}
+      {/* Citation warnings removed - backend now provides proper "no evidence" message */}
       
       {/* Answer text with clickable citations */}
       <div className="answer-text">

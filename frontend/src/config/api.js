@@ -73,7 +73,7 @@ export const checkLlmHealth = async () => {
   }
 };
 
-// Answer question function
+// Answer question function (non-streaming)
 export const askQuestion = async (prompt) => {
   console.log('🔵 FRONTEND: Starting askQuestion with prompt:', prompt);
   console.log('🔵 FRONTEND: API_BASE_URL:', API_BASE_URL);
@@ -110,6 +110,114 @@ export const askQuestion = async (prompt) => {
       status: 'error',
       error: errorMessage
     };
+  }
+};
+
+// Answer question function with streaming
+export const askQuestionStream = async (prompt, onChunk, onComplete, onError) => {
+  console.log('🔵 FRONTEND: Starting streaming askQuestion with prompt:', prompt);
+  console.log('🔵 FRONTEND: API_BASE_URL:', API_BASE_URL);
+  const url = `${API_BASE_URL}/v1/answer/stream`;
+  console.log('🔵 FRONTEND: Full endpoint:', url);
+  
+  const startTime = Date.now();
+  let accumulatedText = '';
+  let sources = [];
+  let metadata = {};
+  
+  try {
+    console.log('🔵 FRONTEND: Making streaming POST request...');
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ prompt })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      
+      if (done) {
+        console.log('🔵 FRONTEND: Stream complete');
+        break;
+      }
+      
+      // Decode chunk
+      const chunk = decoder.decode(value, { stream: true });
+      
+      // Split by newlines to handle multiple SSE events
+      const lines = chunk.split('\n');
+      
+      for (const line of lines) {
+        if (!line.trim() || !line.startsWith('data: ')) {
+          continue;
+        }
+        
+        try {
+          const jsonStr = line.substring(6); // Remove "data: " prefix
+          const event = JSON.parse(jsonStr);
+          
+          console.log('🔵 FRONTEND: Received event:', event.type);
+          
+          if (event.type === 'metadata') {
+            // Store sources and metadata
+            sources = event.sources;
+            metadata = {
+              used_model: event.used_model,
+              total_sources: event.total_sources,
+              total_tokens: event.total_tokens,
+              target_tokens: event.target_tokens
+            };
+            console.log('🔵 FRONTEND: Received', sources.length, 'sources');
+          } else if (event.type === 'content') {
+            // Accumulate text and call onChunk callback
+            accumulatedText += event.chunk;
+            if (onChunk) {
+              onChunk(accumulatedText, sources);
+            }
+          } else if (event.type === 'done') {
+            const elapsed = Date.now() - startTime;
+            console.log('🔵 FRONTEND: ✅ Stream complete after', elapsed, 'ms');
+            if (onComplete) {
+              onComplete({
+                answer_md: accumulatedText,
+                sources: sources,
+                used_model: metadata.used_model,
+                latency_ms: event.latency_ms,
+                metadata: metadata
+              });
+            }
+          } else if (event.type === 'error') {
+            console.error('🔵 FRONTEND: ❌ Stream error:', event.message);
+            if (onError) {
+              onError(event.message);
+            }
+          }
+        } catch (parseError) {
+          console.warn('🔵 FRONTEND: Failed to parse SSE event:', line, parseError);
+        }
+      }
+    }
+  } catch (error) {
+    const elapsed = Date.now() - startTime;
+    console.error('🔵 FRONTEND: ❌ Error after', elapsed, 'ms:', error);
+    
+    let errorMessage = error.message;
+    if (error.message.includes('Failed to fetch')) {
+      errorMessage = 'Backend unavailable or timed out.\nPlease retry.';
+    }
+    
+    if (onError) {
+      onError(errorMessage);
+    }
   }
 };
 

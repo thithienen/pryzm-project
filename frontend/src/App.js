@@ -3,7 +3,7 @@ import './App.css';
 import ErrorBanner from './components/ErrorBanner';
 import SourcesPane from './components/SourcesPane';
 import AnswerText from './components/AnswerText';
-import { askQuestion } from './config/api';
+import { askQuestionStream } from './config/api';
 
 function App() {
   const [messages, setMessages] = useState([]);
@@ -14,6 +14,11 @@ function App() {
   const [highlightedSource, setHighlightedSource] = useState(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  
+  // Streaming buffer state
+  const streamBufferRef = useRef('');
+  const displayedTextRef = useRef('');
+  const streamIntervalRef = useRef(null);
 
   // Auto-resize textarea function
   const autoResizeTextarea = useCallback(() => {
@@ -35,8 +40,217 @@ function App() {
     autoResizeTextarea();
   }, [autoResizeTextarea]);
 
-  // Handle sending messages with real API calls
+  // Handle sending messages with streaming API calls
   const handleSendMessage = async (message) => {
+    if (!message.trim() || isGenerating) return;
+
+    // Clear any existing errors
+    setError(null);
+
+    // Add user message
+    const userMessage = {
+      id: Date.now(),
+      text: message,
+      sender: 'user',
+      timestamp: new Date()
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setInputValue('');
+    // Reset textarea height after sending
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+    }
+    setIsGenerating(true);
+
+    // Create placeholder bot message for streaming
+    const botMessageId = Date.now() + 1;
+    const placeholderBotMessage = {
+      id: botMessageId,
+      text: '',
+      sender: 'bot',
+      timestamp: new Date(),
+      context: [],
+      streaming: true
+    };
+    setMessages(prev => [...prev, placeholderBotMessage]);
+
+    // Initialize streaming buffer
+    streamBufferRef.current = '';
+    displayedTextRef.current = '';
+    
+    // Clear any existing interval
+    if (streamIntervalRef.current) {
+      clearInterval(streamIntervalRef.current);
+    }
+    
+    // Start smooth display interval (30ms = ~33 chars/sec for smooth typing effect)
+    streamIntervalRef.current = setInterval(() => {
+      const buffer = streamBufferRef.current;
+      const displayed = displayedTextRef.current;
+      
+      if (displayed.length < buffer.length) {
+        // Calculate how many characters to add (3-5 chars per tick for smooth flow)
+        const charsToAdd = Math.min(
+          Math.ceil((buffer.length - displayed.length) / 10), // Adaptive speed
+          5 // Max 5 chars per tick
+        );
+        
+        const newDisplayed = buffer.slice(0, displayed.length + charsToAdd);
+        displayedTextRef.current = newDisplayed;
+        
+        setMessages(prev => prev.map(msg => 
+          msg.id === botMessageId
+            ? { ...msg, text: newDisplayed }
+            : msg
+        ));
+      }
+    }, 30);
+
+    try {
+      // Call the streaming API
+      await askQuestionStream(
+        message,
+        // onChunk callback - add to buffer instead of directly updating
+        (accumulatedText, sources) => {
+          streamBufferRef.current = accumulatedText;
+          // Update sources immediately
+          setMessages(prev => prev.map(msg => 
+            msg.id === botMessageId
+              ? { ...msg, context: sources }
+              : msg
+          ));
+        },
+        // onComplete callback - finalize message with metadata
+        (finalData) => {
+          // Stop the smooth streaming interval
+          if (streamIntervalRef.current) {
+            clearInterval(streamIntervalRef.current);
+            streamIntervalRef.current = null;
+          }
+          
+          const sources = finalData.sources || [];
+          const answerText = finalData.answer_md || '';
+          
+          console.log('📊 SOURCES: Total sources received:', sources.length);
+          
+          // Extract citation numbers from the answer text
+          const citationPattern = /\[(\d+)\]/g;
+          const citationsInText = [];
+          let match;
+          while ((match = citationPattern.exec(answerText)) !== null) {
+            const citationNum = parseInt(match[1]);
+            if (!citationsInText.includes(citationNum)) {
+              citationsInText.push(citationNum);
+            }
+          }
+          
+          console.log('📊 CITATIONS: Found in text:', citationsInText);
+          
+          // Filter sources to only include those referenced in the text
+          const filteredSources = sources.filter(source => 
+            citationsInText.includes(source.evidence_id)
+          );
+          
+          console.log('📊 SOURCES: Filtered sources:', filteredSources.length);
+          
+          // Create a mapping from original citation numbers to new sequential numbers
+          const citationMapping = {};
+          citationsInText.forEach((originalNum, index) => {
+            citationMapping[originalNum] = index + 1;
+          });
+          
+          console.log('📊 MAPPING: Citation mapping:', citationMapping);
+          
+          // Map filtered sources with renumbered ranks
+          const context = filteredSources.map((source, index) => {
+            return {
+              rank: index + 1,
+              original_rank: source.evidence_id,
+              doc_id: source.doc_id,
+              title: source.doc_title,
+              url: source.source_url || '',
+              doc_date: source.date || source.doctype || 'Unknown',
+              pageno: source.page_range && source.page_range.length > 0 ? source.page_range[0] : 1,
+              snippet: source.text || 'No preview available'
+            };
+          });
+          
+          console.log('📊 SOURCES: Mapped context:', context);
+          
+          // Update the answer text to use new citation numbers
+          let updatedAnswerText = answerText;
+          Object.entries(citationMapping).forEach(([originalNum, newNum]) => {
+            const regex = new RegExp(`\\[${originalNum}\\]`, 'g');
+            updatedAnswerText = updatedAnswerText.replace(regex, `[${newNum}]`);
+          });
+          
+          console.log('📊 TEXT: Updated answer text with new citations');
+          
+          const completedMessage = {
+            id: botMessageId,
+            text: updatedAnswerText,
+            sender: 'bot',
+            timestamp: new Date(),
+            context: context,
+            used_model: finalData.used_model,
+            latency_ms: finalData.latency_ms,
+            generation_time: (finalData.latency_ms / 1000).toFixed(3),
+            citation_mapping: citationMapping,
+            streaming: false
+          };
+          
+          setMessages(prev => prev.map(msg => 
+            msg.id === botMessageId ? completedMessage : msg
+          ));
+          setLastAnswer(completedMessage);
+          setIsGenerating(false);
+          
+          // Clear buffer
+          streamBufferRef.current = '';
+          displayedTextRef.current = '';
+        },
+        // onError callback
+        (errorMessage) => {
+          // Stop the smooth streaming interval
+          if (streamIntervalRef.current) {
+            clearInterval(streamIntervalRef.current);
+            streamIntervalRef.current = null;
+          }
+          
+          console.error('Streaming error:', errorMessage);
+          setError(`Error: ${errorMessage}`);
+          // Remove the placeholder message
+          setMessages(prev => prev.filter(msg => msg.id !== botMessageId));
+          setIsGenerating(false);
+          
+          // Clear buffer
+          streamBufferRef.current = '';
+          displayedTextRef.current = '';
+        }
+      );
+    } catch (err) {
+      // Stop the smooth streaming interval
+      if (streamIntervalRef.current) {
+        clearInterval(streamIntervalRef.current);
+        streamIntervalRef.current = null;
+      }
+      
+      console.error('Error calling streaming API:', err);
+      setError(`Error: ${err.message}`);
+      // Remove the placeholder message
+      setMessages(prev => prev.filter(msg => msg.id !== botMessageId));
+      setIsGenerating(false);
+      
+      // Clear buffer
+      streamBufferRef.current = '';
+      displayedTextRef.current = '';
+    }
+  };
+
+  // Keep the old non-streaming method as backup (commented out)
+  /*
+  const handleSendMessageNonStreaming = async (message) => {
     if (!message.trim() || isGenerating) return;
 
     // Clear any existing errors
@@ -62,101 +276,10 @@ function App() {
       // Call the actual API
       const response = await askQuestion(message);
       
-      if (response.status === 'ok') {
-        // Map sources to context format for the frontend
-        const sources = response.data.sources || [];
-        const answerText = response.data.answer_md || '';
-        
-        console.log('📊 SOURCES: Total sources received:', sources.length);
-        console.log('📊 SOURCES: First source:', sources[0]);
-        
-        // Extract citation numbers from the answer text
-        const citationPattern = /\[(\d+)\]/g;
-        const citationsInText = [];
-        let match;
-        while ((match = citationPattern.exec(answerText)) !== null) {
-          const citationNum = parseInt(match[1]);
-          if (!citationsInText.includes(citationNum)) {
-            citationsInText.push(citationNum);
-          }
-        }
-        
-        console.log('📊 CITATIONS: Found in text:', citationsInText);
-        
-        // Filter sources to only include those referenced in the text
-        const filteredSources = sources.filter(source => 
-          citationsInText.includes(source.evidence_id)
-        );
-        
-        console.log('📊 SOURCES: Filtered sources:', filteredSources.length);
-        
-        // Create a mapping from original citation numbers to new sequential numbers
-        const citationMapping = {};
-        citationsInText.forEach((originalNum, index) => {
-          citationMapping[originalNum] = index + 1;
-        });
-        
-        console.log('📊 MAPPING: Citation mapping:', citationMapping);
-        
-        // Map filtered sources with renumbered ranks
-        const context = filteredSources.map((source, index) => {
-          console.log('📊 SOURCES: Mapping source:', {
-            evidence_id: source.evidence_id,
-            doc_id: source.doc_id,
-            title: source.doc_title,
-            page_range: source.page_range,
-            new_rank: index + 1
-          });
-          
-          return {
-            rank: index + 1, // New sequential rank
-            original_rank: source.evidence_id, // Keep original for reference
-            doc_id: source.doc_id,
-            title: source.doc_title,
-            url: source.source_url || '',
-            doc_date: source.date || source.doctype || 'Unknown',
-            pageno: source.page_range && source.page_range.length > 0 ? source.page_range[0] : 1,
-            snippet: source.text || 'No preview available'
-          };
-        });
-        
-        console.log('📊 SOURCES: Mapped context:', context);
-        
-        // Update the answer text to use new citation numbers
-        let updatedAnswerText = answerText;
-        Object.entries(citationMapping).forEach(([originalNum, newNum]) => {
-          const regex = new RegExp(`\\[${originalNum}\\]`, 'g');
-          updatedAnswerText = updatedAnswerText.replace(regex, `[${newNum}]`);
-        });
-        
-        console.log('📊 TEXT: Updated answer text with new citations:', updatedAnswerText);
-        
-        const botMessage = {
-          id: Date.now() + 1,
-          text: updatedAnswerText,
-          sender: 'bot',
-          timestamp: new Date(),
-          context: context,
-          used_model: response.data.used_model,
-          latency_ms: response.data.latency_ms,
-          generation_time: (response.data.latency_ms / 1000).toFixed(3),
-          citation_mapping: citationMapping
-        };
-        setMessages(prev => [...prev, botMessage]);
-        setLastAnswer(botMessage);
-      } else {
-        throw new Error(response.error || 'Failed to get response');
-      }
-    } catch (err) {
-      console.error('Error calling API:', err);
-      setError(`Error: ${err.message}`);
-      
-      // Don't add error message to chat, just show error banner
-      // Keep previous answer grayed out
-    } finally {
-      setIsGenerating(false);
+      // ... (old non-streaming code removed for brevity)
     }
   };
+  */
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -197,6 +320,15 @@ function App() {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+  
+  // Cleanup streaming interval on unmount
+  useEffect(() => {
+    return () => {
+      if (streamIntervalRef.current) {
+        clearInterval(streamIntervalRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div className="app">
@@ -224,6 +356,7 @@ function App() {
                       usedModel={message.used_model}
                       latencyMs={message.latency_ms}
                       citationMapping={message.citation_mapping || {}}
+                      isStreaming={message.streaming || false}
                     />
                   ) : (
                     <div className="message-text">{message.text}</div>
