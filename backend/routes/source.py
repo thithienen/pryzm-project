@@ -1,6 +1,5 @@
 from fastapi import APIRouter, HTTPException
 from schemas import SourceRequest, SourceResponse, SourcePageResponse, EvidenceItem, ErrorResponse
-from doc_repo import get_doc_repo
 from llm.retriever import get_retriever
 from llm.context_processor import process_context
 import time
@@ -13,16 +12,20 @@ async def get_source_page(doc_id: str, pageno: int) -> SourcePageResponse:
     """
     Get the full page text and metadata for a specific document and page.
     
+    Reconstructs the page from database chunks (lightweight mode).
+    
     Args:
-        doc_id: The document ID from docs.json
+        doc_id: The document ID
         pageno: The 1-indexed page number (must be >= 1)
         
     Returns:
-        SourceResponse with doc_id, title, doc_date, url, pageno, and full text
+        SourcePageResponse with doc_id, title, doc_date, url, pageno, and full text
         
     Raises:
         HTTPException: 404 if document or page not found, 400 if pageno < 1
     """
+    print(f"🟠 SOURCE: get_source_page called with doc_id={doc_id}, pageno={pageno}")
+    
     # Validate pageno is 1-indexed
     if pageno < 1:
         raise HTTPException(
@@ -34,25 +37,46 @@ async def get_source_page(doc_id: str, pageno: int) -> SourcePageResponse:
         )
     
     try:
-        doc_repo = get_doc_repo()
-        page_data = doc_repo.get_page(doc_id, pageno)
+        # Reconstruct page from database chunks (lightweight mode)
+        print(f"🟠 SOURCE: Reconstructing page from database chunks...")
+        retriever = get_retriever()
         
-        if not page_data:
+        # Query all chunks for this doc_id and page
+        cursor = retriever.conn.execute(
+            """SELECT chunk_id, doc_id, doc_title, source_url, date, doctype,
+                      page, section_path, text, is_table
+               FROM chunks 
+               WHERE doc_id = ? AND page = ?
+               ORDER BY chunk_id""",
+            (doc_id, pageno)
+        )
+        
+        chunks = cursor.fetchall()
+        print(f"🟠 SOURCE: Found {len(chunks)} chunks for doc_id={doc_id}, page={pageno}")
+        
+        if not chunks:
+            print(f"🟠 SOURCE: ❌ No chunks found")
             raise HTTPException(
                 status_code=404,
                 detail=ErrorResponse(
                     error="not found",
-                    detail="Document or page not found"
+                    detail=f"No data found for document '{doc_id}' page {pageno}"
                 ).dict()
             )
         
+        # Reconstruct page from chunks
+        first_chunk = chunks[0]
+        page_text = "\n\n".join(chunk['text'] for chunk in chunks)
+        
+        print(f"🟠 SOURCE: ✅ Reconstructed page text ({len(page_text)} chars from {len(chunks)} chunks)")
+        
         return SourcePageResponse(
-            doc_id=page_data['doc_id'],
-            title=page_data['title'],
-            doc_date=page_data['doc_date'],
-            url=page_data['url'],
-            pageno=page_data['pageno'],
-            text=page_data['text']
+            doc_id=first_chunk['doc_id'],
+            title=first_chunk['doc_title'],
+            doc_date=first_chunk['date'] or first_chunk['doctype'] or 'Unknown',
+            url=first_chunk['source_url'] or '',
+            pageno=pageno,
+            text=page_text
         )
         
     except HTTPException:
@@ -60,7 +84,9 @@ async def get_source_page(doc_id: str, pageno: int) -> SourcePageResponse:
         raise
     except Exception as e:
         # Log the error and return 500
-        print(f"Error in get_source_page: {str(e)}")
+        print(f"🟠 SOURCE: ❌ Unexpected error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=500, 
             detail=ErrorResponse(
@@ -128,6 +154,7 @@ async def retrieve_sources(request: SourceRequest) -> SourceResponse:
                 doc_id=ev['doc_id'],
                 doc_title=ev['doc_title'],
                 doctype=ev.get('doctype'),
+                date=ev.get('date'),
                 page_range=ev['page_range'],
                 section_path=ev.get('section_path', []),
                 text=ev['text'],

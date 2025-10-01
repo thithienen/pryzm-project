@@ -21,6 +21,7 @@ class EvidenceBlock:
     doc_id: str
     doc_title: str
     doctype: Optional[str]
+    date: Optional[str]  # Document date
     page_range: List[int]  # [start_page, end_page]
     section_path: List[str]
     text: str
@@ -149,6 +150,7 @@ class ContextProcessor:
                             'doc_id': chunk['doc_id'],
                             'doc_title': chunk['doc_title'],
                             'doctype': chunk.get('doctype'),
+                            'date': chunk.get('date'),
                             'source_url': chunk.get('source_url', ''),
                             'page_start': chunk['page'],
                             'page_end': chunk['page'],
@@ -247,6 +249,7 @@ class ContextProcessor:
                 doc_id=chunk['doc_id'],
                 doc_title=chunk['doc_title'],
                 doctype=chunk.get('doctype'),
+                date=chunk.get('date'),
                 page_range=[chunk['page_start'], chunk['page_end']],
                 section_path=chunk.get('section_path', []),
                 text=chunk['text'],

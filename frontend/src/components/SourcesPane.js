@@ -48,12 +48,12 @@ const SourcesPane = ({
     }
 
     // Fetch the source data
-    console.log('🌐 Fetching source data for:', sourceKey);
+    console.log('🌐 Fetching source data for:', { docId, pageno, sourceKey });
     setLoadingSources(prev => ({ ...prev, [sourceKey]: true }));
     setSourceErrors(prev => ({ ...prev, [sourceKey]: null }));
 
     try {
-      console.log('📡 Calling getSourcePage API...');
+      console.log('📡 Calling getSourcePage API with docId:', docId, 'pageno:', pageno);
       const response = await getSourcePage(docId, pageno);
       console.log('📡 API response received:', response);
       
@@ -66,14 +66,15 @@ const SourcesPane = ({
         console.error('❌ API error:', response.error);
         setSourceErrors(prev => ({ 
           ...prev, 
-          [sourceKey]: 'Source not found or unavailable.' 
+          [sourceKey]: `Source not found: ${response.error}` 
         }));
       }
     } catch (error) {
       console.error('💥 Fetch error:', error);
+      console.error('💥 Error details:', error.message, error.stack);
       setSourceErrors(prev => ({ 
         ...prev, 
-        [sourceKey]: 'Source not found or unavailable.' 
+        [sourceKey]: `Error loading source: ${error.message}` 
       }));
     } finally {
       console.log('🏁 Loading complete for:', sourceKey);
@@ -136,7 +137,7 @@ const SourcesPane = ({
   return (
     <div className="sources-pane">
       <div className="sources-header">
-        <h3>Sources</h3>
+        <h3>Relevant Sources</h3>
       </div>
       
       <div className="sources-content">
@@ -182,9 +183,8 @@ const SourcesPane = ({
                   tabIndex={0}
                   onKeyDown={(e) => handleKeyDown(e, item.doc_id, item.pageno, rank)}
                   onClick={(e) => {
-                    console.log('🖱️ SOURCE CARD CLICKED (fallback):', { docId: item.doc_id, pageno: item.pageno, rank });
-                    console.log('🖱️ Click target:', e.target);
-                    console.log('🖱️ Click currentTarget:', e.currentTarget);
+                    console.log('🖱️ SOURCE CARD CLICKED:', { docId: item.doc_id, pageno: item.pageno, rank });
+                    console.log('🖱️ Click target:', e.target.className);
                     // Check if clicking on the source number (don't trigger twice)
                     if (e.target.closest('.source-number')) {
                       console.log('🖱️ Click was on source number, ignoring card click');
@@ -201,13 +201,12 @@ const SourcesPane = ({
                     className="source-number clickable"
                     onClick={(e) => {
                       console.log('🖱️ SOURCE NUMBER CLICKED:', { docId: item.doc_id, pageno: item.pageno, rank });
-                      console.log('🖱️ Click event:', e);
                       e.stopPropagation();
                       e.preventDefault();
                       console.log('🖱️ Triggering source expansion from number click');
                       handleSourceExpand(item.doc_id, item.pageno, rank);
                     }}
-                    title="View full page"
+                    title="Click to expand full page"
                   >
                     [{rank}]
                   </div>
@@ -215,9 +214,6 @@ const SourcesPane = ({
                     <div className="source-title">{item.title}</div>
                     <div className="source-meta">
                       {item.doc_date} • p.{item.pageno}
-                      {item.url && (
-                        <span className="source-url-indicator"> • Original available</span>
-                      )}
                     </div>
                     <div className="source-snippet">
                       {item.snippet ? 
@@ -254,15 +250,19 @@ const SourcesPane = ({
                     {isExpanded && fullSourceData && (
                       <div className="source-expanded">
                         <div className="source-expanded-header">
-                          <div className="source-expanded-title">
-                            {fullSourceData.title}
-                          </div>
                           <div className="source-expanded-meta">
                             {fullSourceData.doc_date} • Page {fullSourceData.pageno}
                             {fullSourceData.url && (
-                              <span className="source-original-link">
-                                • Open original
-                              </span>
+                              <button 
+                                className="source-url-button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  window.open(fullSourceData.url, '_blank', 'noopener,noreferrer');
+                                }}
+                                title="Open original document in new tab"
+                              >
+                                Open Original
+                              </button>
                             )}
                           </div>
                         </div>

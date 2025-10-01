@@ -31,6 +31,7 @@ class EvidenceItem(BaseModel):
     doc_id: str
     doc_title: str
     doctype: Optional[str] = None
+    date: Optional[str] = None  # Document date
     page_range: List[int]  # [start, end]
     section_path: List[str] = []
     text: str

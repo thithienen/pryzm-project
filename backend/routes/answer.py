@@ -200,6 +200,7 @@ Please answer the question using ONLY the evidence above. Remember to cite every
                 doc_id=ev['doc_id'],
                 doc_title=ev['doc_title'],
                 doctype=ev.get('doctype'),
+                date=ev.get('date'),
                 page_range=ev['page_range'],
                 section_path=ev.get('section_path', []),
                 text=ev['text'],

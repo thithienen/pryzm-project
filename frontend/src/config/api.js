@@ -116,17 +116,20 @@ export const askQuestion = async (prompt) => {
 // Get source page function
 export const getSourcePage = async (docId, pageno) => {
   console.log('🌐 API: getSourcePage called with:', { docId, pageno });
+  console.log('🌐 API: docId type:', typeof docId, 'pageno type:', typeof pageno);
   try {
-    const url = `/v1/source/${docId}/${pageno}`;
-    console.log('🌐 API: Making request to:', url);
+    const url = `/v1/source/${encodeURIComponent(docId)}/${pageno}`;
+    console.log('🌐 API: Making request to:', `${API_BASE_URL}${url}`);
     const response = await apiFetch(url);
-    console.log('🌐 API: Response received:', response);
+    console.log('🌐 API: ✅ Response received:', response);
     return {
       status: 'ok',
       data: response
     };
   } catch (error) {
-    console.error('🌐 API: Error occurred:', error);
+    console.error('🌐 API: ❌ Error occurred:', error);
+    console.error('🌐 API: Error message:', error.message);
+    console.error('🌐 API: Error stack:', error.stack);
     return {
       status: 'error',
       error: error.message

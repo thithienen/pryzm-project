@@ -15,6 +15,26 @@ function App() {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
+  // Auto-resize textarea function
+  const autoResizeTextarea = useCallback(() => {
+    const textarea = inputRef.current;
+    if (textarea) {
+      // Reset height to auto to get the correct scrollHeight
+      textarea.style.height = 'auto';
+      // Calculate the new height based on content (24px per line)
+      const lineHeight = 24;
+      const maxLines = 4;
+      const newHeight = Math.min(textarea.scrollHeight, lineHeight * maxLines);
+      textarea.style.height = `${Math.max(newHeight, lineHeight)}px`;
+    }
+  }, []);
+
+  // Handle input change with auto-resize
+  const handleInputChange = useCallback((e) => {
+    setInputValue(e.target.value);
+    autoResizeTextarea();
+  }, [autoResizeTextarea]);
+
   // Handle sending messages with real API calls
   const handleSendMessage = async (message) => {
     if (!message.trim() || isGenerating) return;
@@ -32,6 +52,10 @@ function App() {
 
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
+    // Reset textarea height after sending
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+    }
     setIsGenerating(true);
 
     try {
@@ -39,12 +63,40 @@ function App() {
       const response = await askQuestion(message);
       
       if (response.status === 'ok') {
+        // Map sources to context format for the frontend
+        const sources = response.data.sources || [];
+        
+        console.log('📊 SOURCES: Total sources received:', sources.length);
+        console.log('📊 SOURCES: First source:', sources[0]);
+        
+        // Map all sources (no filtering)
+        const context = sources.map(source => {
+          console.log('📊 SOURCES: Mapping source:', {
+            evidence_id: source.evidence_id,
+            doc_id: source.doc_id,
+            title: source.doc_title,
+            page_range: source.page_range
+          });
+          
+          return {
+            rank: source.evidence_id,
+            doc_id: source.doc_id,
+            title: source.doc_title,
+            url: source.source_url || '',
+            doc_date: source.date || source.doctype || 'Unknown',
+            pageno: source.page_range && source.page_range.length > 0 ? source.page_range[0] : 1,
+            snippet: source.text || 'No preview available'
+          };
+        });
+        
+        console.log('📊 SOURCES: Mapped context:', context);
+        
         const botMessage = {
           id: Date.now() + 1,
           text: response.data.answer_md,
           sender: 'bot',
           timestamp: new Date(),
-          context: response.data.context || [],
+          context: context,
           used_model: response.data.used_model,
           latency_ms: response.data.latency_ms,
           generation_time: (response.data.latency_ms / 1000).toFixed(3)
@@ -122,9 +174,6 @@ function App() {
           {messages.map((message) => (
             <div key={message.id} className={`message-wrapper ${message.sender} ${message.isError ? 'error' : ''} ${error && message.sender === 'bot' ? 'grayed-out' : ''}`}>
               <div className="message">
-                <div className="message-avatar">
-                  {message.sender === 'user' ? '👤' : '🤖'}
-                </div>
                 <div className="message-content">
                   {message.sender === 'bot' ? (
                     <AnswerText
@@ -145,7 +194,6 @@ function App() {
           {isGenerating && (
             <div className="message-wrapper bot">
               <div className="message">
-                <div className="message-avatar">🤖</div>
                 <div className="message-content">
                   <div className="generating-indicator">
                     <div className="spinner"></div>
@@ -165,7 +213,7 @@ function App() {
                 <textarea
                   ref={inputRef}
                   value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
+                  onChange={handleInputChange}
                   onKeyPress={handleKeyPress}
                   placeholder="Type your message here..."
                   className="message-input"

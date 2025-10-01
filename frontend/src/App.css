@@ -195,34 +195,9 @@
 /* Message */
 .message {
   display: flex;
-  gap: 12px;
   max-width: 80%;
   align-items: flex-start;
   position: relative;
-}
-
-.message-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  flex-shrink: 0;
-  transition: all 0.2s ease;
-}
-
-.message-wrapper.user .message-avatar {
-  background: #3b82f6;
-  color: #ffffff;
-  order: 2;
-}
-
-.message-wrapper.bot .message-avatar {
-  background: #64748b;
-  color: #ffffff;
-  order: 1;
 }
 
 .message-content {
@@ -350,7 +325,7 @@
   background: #1e293b;
   border: 1px solid #475569;
   border-radius: 12px;
-  padding: 16px 20px;
+  padding: 12px 20px;
   transition: all 0.2s ease;
   min-height: 48px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
@@ -378,20 +353,21 @@
   font-size: 15px;
   font-family: inherit;
   resize: none;
-  max-height: 120px;
-  min-height: 20px;
-  line-height: 1.5;
+  max-height: 96px; /* 4 lines max (24px per line) */
+  min-height: 24px; /* 1 line minimum with proper line height */
+  line-height: 24px; /* Fixed line height for consistent centering */
   padding: 0;
   margin: 0;
   vertical-align: top;
   font-weight: 400;
   letter-spacing: 0.01em;
-  transition: all 0.2s ease;
+  transition: height 0.2s ease;
+  overflow-y: auto;
 }
 
 .message-input::placeholder {
   color: #64748b;
-  line-height: 1.5;
+  line-height: 24px;
   font-weight: 400;
   opacity: 1;
 }
@@ -492,18 +468,12 @@
   
   .input-wrapper {
     padding: 16px 20px;
-    min-height: 56px;
+    min-height: 48px;
   }
   
   .send-button {
     width: 40px;
     height: 40px;
-  }
-  
-  .message-avatar {
-    width: 32px;
-    height: 32px;
-    font-size: 14px;
   }
 }
 
@@ -526,7 +496,7 @@
   
   .input-wrapper {
     padding: 14px 18px;
-    min-height: 52px;
+    min-height: 44px;
   }
   
   .send-button {
@@ -544,12 +514,6 @@
   
   .welcome-icon {
     font-size: 32px;
-  }
-  
-  .message-avatar {
-    width: 28px;
-    height: 28px;
-    font-size: 12px;
   }
 }
 
@@ -617,9 +581,4 @@
 /* Error Message Styling */
 .message-wrapper.error .message-text {
   color: #ff6b6b;
-}
-
-.message-wrapper.error .message-avatar {
-  background: rgba(255, 107, 107, 0.2);
-  border-color: #ff6b6b;
 }
