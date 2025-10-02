@@ -3,15 +3,21 @@ import './App.css';
 import ErrorBanner from './components/ErrorBanner';
 import SourcesPane from './components/SourcesPane';
 import AnswerText from './components/AnswerText';
+import NavBar from './components/NavBar';
+import ReadmeView from './components/ReadmeView';
+import Footer from './components/Footer';
+import ResizableDivider from './components/ResizableDivider';
 import { askQuestionStream } from './config/api';
 
 function App() {
+  const [activeTab, setActiveTab] = useState('readme');
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState(null);
   const [lastAnswer, setLastAnswer] = useState(null);
   const [highlightedSource, setHighlightedSource] = useState(null);
+  const [sourcesWidth, setSourcesWidth] = useState(480);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   
@@ -311,6 +317,14 @@ function App() {
     setError(null);
   };
 
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+  };
+
+  const handleResize = useCallback((newWidth) => {
+    setSourcesWidth(newWidth);
+  }, []);
+
   // Handle citation clicks
   const handleCitationClick = useCallback((citationNum) => {
     console.log('🎯 APP: Citation click received:', citationNum);
@@ -344,101 +358,112 @@ function App() {
 
   return (
     <div className="app">
+      <NavBar activeTab={activeTab} onTabChange={handleTabChange} />
       <ErrorBanner error={error} onDismiss={handleDismissError} />
       <div className="main-layout">
-        <div className="chat-container">
-          <div className="messages-container">
-          {messages.length === 0 && (
-            <div className="welcome-screen">
-              <div className="welcome-icon">✨</div>
-              <h2>Welcome to Pryzm</h2>
-              <p>Ask questions about your documents and get intelligent answers</p>
-            </div>
-          )}
-          
-          {messages.map((message) => (
-            <div key={message.id} className={`message-wrapper ${message.sender} ${message.isError ? 'error' : ''} ${error && message.sender === 'bot' ? 'grayed-out' : ''}`}>
-              <div className="message">
-                <div className="message-content">
-                  {message.sender === 'bot' ? (
-                    <AnswerText
-                      text={message.text}
-                      context={message.context || []}
-                      onCitationClick={handleCitationClick}
-                      usedModel={message.used_model}
-                      latencyMs={message.latency_ms}
-                      citationMapping={message.citation_mapping || {}}
-                      isStreaming={message.streaming || false}
-                      onWebSearchRetry={handleWebSearchRetry}
-                      usedWebSearch={message.used_web_search || false}
-                    />
-                  ) : (
-                    <div className="message-text">{message.text}</div>
-                  )}
+        {activeTab === 'chat' ? (
+          <>
+            <div className="chat-container">
+              <div className="messages-container">
+              {messages.length === 0 && (
+                <div className="welcome-screen">
+                  <div className="welcome-icon">✨</div>
+                  <h2>Welcome to Pryzm</h2>
+                  <p>Ask intelligent questions and get intelligent answers</p>
                 </div>
-              </div>
-            </div>
-          ))}
-
-          {isGenerating && (
-            <div className="message-wrapper bot">
-              <div className="message">
-                <div className="message-content">
-                  <div className="generating-indicator">
-                    <div className="spinner"></div>
-                    <span>Generating...</span>
+              )}
+              
+              {messages.map((message) => (
+                <div key={message.id} className={`message-wrapper ${message.sender} ${message.isError ? 'error' : ''} ${error && message.sender === 'bot' ? 'grayed-out' : ''}`}>
+                  <div className="message">
+                    <div className="message-content">
+                      {message.sender === 'bot' ? (
+                        <AnswerText
+                          text={message.text}
+                          context={message.context || []}
+                          onCitationClick={handleCitationClick}
+                          usedModel={message.used_model}
+                          latencyMs={message.latency_ms}
+                          citationMapping={message.citation_mapping || {}}
+                          isStreaming={message.streaming || false}
+                          onWebSearchRetry={handleWebSearchRetry}
+                          usedWebSearch={message.used_web_search || false}
+                        />
+                      ) : (
+                        <div className="message-text">{message.text}</div>
+                      )}
+                    </div>
                   </div>
                 </div>
+              ))}
+
+              {isGenerating && (
+                <div className="message-wrapper bot">
+                  <div className="message">
+                    <div className="message-content">
+                      <div className="generating-indicator">
+                        <div className="spinner"></div>
+                        <span>Generating...</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              <div ref={messagesEndRef} />
+              </div>
+
+              <div className="input-container">
+                <form onSubmit={handleSubmit} className="input-form">
+                  <div className="input-wrapper">
+                    <textarea
+                      ref={inputRef}
+                      value={inputValue}
+                      onChange={handleInputChange}
+                      onKeyPress={handleKeyPress}
+                      placeholder="Type your message here..."
+                      className="message-input"
+                      rows="1"
+                      disabled={isGenerating}
+                    />
+                    <button 
+                      type="submit" 
+                      className="send-button"
+                      disabled={!inputValue.trim() || isGenerating}
+                    >
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                        <path 
+                          d="M7 11L12 6L17 11M12 18V7" 
+                          stroke="currentColor" 
+                          strokeWidth="2" 
+                          strokeLinecap="round" 
+                          strokeLinejoin="round"
+                          transform="rotate(90 12 12)"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
-          )}
-          
-          <div ref={messagesEndRef} />
-          </div>
-
-          <div className="input-container">
-            <form onSubmit={handleSubmit} className="input-form">
-              <div className="input-wrapper">
-                <textarea
-                  ref={inputRef}
-                  value={inputValue}
-                  onChange={handleInputChange}
-                  onKeyPress={handleKeyPress}
-                  placeholder="Type your message here..."
-                  className="message-input"
-                  rows="1"
-                  disabled={isGenerating}
-                />
-                <button 
-                  type="submit" 
-                  className="send-button"
-                  disabled={!inputValue.trim() || isGenerating}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                    <path 
-                      d="M7 11L12 6L17 11M12 18V7" 
-                      stroke="currentColor" 
-                      strokeWidth="2" 
-                      strokeLinecap="round" 
-                      strokeLinejoin="round"
-                      transform="rotate(90 12 12)"
-                    />
-                  </svg>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-        
-        <SourcesPane 
-          context={lastAnswer?.context || []}
-          isLoading={isGenerating}
-          hasError={!!error}
-          errorMessage={error}
-          highlightedSource={highlightedSource}
-          onSourceHighlightComplete={() => setHighlightedSource(null)}
-        />
+            
+            <ResizableDivider onResize={handleResize} />
+            
+            <SourcesPane 
+              context={lastAnswer?.context || []}
+              isLoading={isGenerating}
+              hasError={!!error}
+              errorMessage={error}
+              highlightedSource={highlightedSource}
+              onSourceHighlightComplete={() => setHighlightedSource(null)}
+              width={sourcesWidth}
+            />
+          </>
+        ) : (
+          <ReadmeView />
+        )}
       </div>
+      <Footer />
     </div>
   );
 }

@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import './SourcesPane.css';
 import { getSourcePage } from '../config/api';
-import HealthStatus from './HealthStatus';
 
 const SourcesPane = ({ 
   context = [], 
@@ -10,7 +9,8 @@ const SourcesPane = ({
   errorMessage = null,
   highlightedSource = null,
   onSourceHighlightComplete = null,
-  onCitationClick = null
+  onCitationClick = null,
+  width = 480
 }) => {
   const [expandedSources, setExpandedSources] = useState({});
   const [loadingSources, setLoadingSources] = useState({});
@@ -135,7 +135,7 @@ const SourcesPane = ({
     context.some(item => item.snippet && item.snippet.includes('Insufficient evidence')));
 
   return (
-    <div className="sources-pane">
+    <div className="sources-pane" style={{ width: `${width}px`, minWidth: `${width}px`, maxWidth: `${width}px` }}>
       <div className="sources-header">
         <h3>Relevant Sources</h3>
       </div>
@@ -278,7 +278,6 @@ const SourcesPane = ({
           </div>
         )}
       </div>
-      <HealthStatus />
     </div>
   );
 };

@@ -1,0 +1,108 @@
+/* Resizable Divider */
+.resizable-divider {
+  width: 12px;
+  height: 100%;
+  position: relative;
+  cursor: col-resize;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+  background: transparent;
+}
+
+.resizable-divider:hover {
+  background: rgba(96, 165, 250, 0.15);
+}
+
+.resizable-divider:active {
+  background: rgba(96, 165, 250, 0.25);
+}
+
+.divider-handle {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.divider-line {
+  position: absolute;
+  width: 2px;
+  height: 100%;
+  background: #475569;
+  transition: all 0.2s ease;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.2);
+}
+
+.resizable-divider:hover .divider-line {
+  background: #60a5fa;
+  width: 3px;
+  box-shadow: 0 0 8px rgba(96, 165, 250, 0.5);
+}
+
+.resizable-divider:active .divider-line {
+  background: #3b82f6;
+  width: 3px;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.7);
+}
+
+/* Divider Arrows */
+.divider-arrows {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 4px;
+  background: rgba(30, 41, 59, 0.95);
+  border-radius: 6px;
+  opacity: 0.6;
+  transition: all 0.2s ease;
+  pointer-events: none;
+  border: 1.5px solid #475569;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  color: #94a3b8;
+  top: 50%;
+  transform: translateY(-50%);
+  animation: bounceArrows 2s ease-in-out infinite;
+}
+
+@keyframes bounceArrows {
+  0%, 100% {
+    opacity: 0.6;
+    transform: translateY(-50%) scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: translateY(-50%) scale(1.08);
+  }
+}
+
+.resizable-divider:hover .divider-arrows {
+  opacity: 1;
+  border-color: #60a5fa;
+  background: rgba(30, 41, 59, 1);
+  color: #60a5fa;
+  animation: none;
+  transform: translateY(-50%) scale(1.1);
+}
+
+.resizable-divider:active .divider-arrows {
+  opacity: 1;
+  border-color: #3b82f6;
+  background: rgba(30, 41, 59, 1);
+  color: #3b82f6;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+  transform: translateY(-50%) scale(1.15);
+}
+
+/* Responsive - hide on mobile */
+@media (max-width: 768px) {
+  .resizable-divider {
+    display: none;
+  }
+}
