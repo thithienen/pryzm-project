@@ -6,8 +6,7 @@ function NavBar({ activeTab, onTabChange }) {
     <nav className="navbar">
       <div className="navbar-container">
         <div className="navbar-brand">
-          <span className="brand-icon">✨</span>
-          <span className="brand-text">Pryzm</span>
+          <span className="brand-text">Pryzm Project</span>
         </div>
         <div className="navbar-tabs">
           <button

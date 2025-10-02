@@ -10,7 +10,9 @@ const AnswerText = ({
   citationMapping = {},
   isStreaming = false,  // NEW: indicates if answer is still streaming
   onWebSearchRetry,     // NEW: callback for web search retry
-  usedWebSearch = false // NEW: indicates if web search was used
+  usedWebSearch = false, // NEW: indicates if web search was used
+  isWebSearching = false, // NEW: indicates if web search is currently in progress
+  isLastMessage = false  // NEW: indicates if this is the most recent message
 }) => {
   const [toastMessage, setToastMessage] = useState(null);
   const [lastClickTime, setLastClickTime] = useState({});
@@ -130,8 +132,11 @@ const AnswerText = ({
   const citationsFound = text.match(citationPattern) || [];
   const hasNoCitations = citationsFound.length === 0;
   
-  // Simple logic: if no citations and not already a web search, show web search button
-  const suggestsWebSearch = !isStreaming && !usedWebSearch && hasNoCitations;
+  // Show web search button for the last message if:
+  // 1. Not currently streaming
+  // 2. Not already a web search
+  // 3. Is the last message (always available for last message)
+  const suggestsWebSearch = !isStreaming && !usedWebSearch && isLastMessage;
 
   // No need for warnings - backend replaces response text when citations are missing
   // const showNoCitationsWarning = !isStreaming && citationsFound.length === 0;
@@ -150,11 +155,19 @@ const AnswerText = ({
       {suggestsWebSearch && onWebSearchRetry && (
         <div className="web-search-suggestion">
           <button 
-            className="web-search-button"
+            className={`web-search-button ${isWebSearching ? 'searching' : ''}`}
             onClick={onWebSearchRetry}
+            disabled={isWebSearching}
             aria-label="Search the web for current information"
           >
-            🌐 Search the Web
+            {isWebSearching ? (
+              <>
+                <span className="spinner"></span>
+                Searching the Web...
+              </>
+            ) : (
+              '🌐 Search the Web'
+            )}
           </button>
         </div>
       )}

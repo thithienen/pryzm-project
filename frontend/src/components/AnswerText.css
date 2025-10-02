@@ -166,6 +166,37 @@
   outline-offset: 2px;
 }
 
+.web-search-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.web-search-button.searching {
+  background: linear-gradient(135deg, #6b7280, #4b5563);
+  cursor: not-allowed;
+}
+
+.web-search-button.searching:hover {
+  background: linear-gradient(135deg, #6b7280, #4b5563);
+  transform: none;
+  box-shadow: none;
+}
+
+.web-search-button .spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
 /* Answer Meta */
 .answer-meta {
   margin-top: 16px;

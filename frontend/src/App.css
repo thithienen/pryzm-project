@@ -137,7 +137,7 @@
 }
 
 .welcome-screen h2 {
-  font-size: 32px;
+  font-size: 24px;
   font-weight: 600;
   margin: 0 0 16px 0;
   color: #f8fafc;
@@ -335,6 +335,46 @@
   position: relative;
 }
 
+/* New Chat Button */
+.new-chat-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: transparent;
+  border: 1px solid #475569;
+  border-radius: 8px;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.new-chat-button:hover:not(:disabled) {
+  background: rgba(96, 165, 250, 0.1);
+  border-color: #60a5fa;
+  color: #60a5fa;
+  transform: translateY(-1px);
+}
+
+.new-chat-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.new-chat-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.new-chat-icon {
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
 .input-wrapper:hover {
   border-color: #64748b;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
@@ -462,7 +502,7 @@
   }
   
   .welcome-screen h2 {
-    font-size: 32px;
+    font-size: 24px;
   }
   
   .welcome-icon {
@@ -515,8 +555,22 @@
     height: 36px;
   }
   
+  .new-chat-button {
+    padding: 6px 10px;
+    font-size: 12px;
+    gap: 4px;
+  }
+  
+  .new-chat-text {
+    display: none; /* Hide text on very small screens, show only icon */
+  }
+  
+  .new-chat-icon {
+    font-size: 18px; /* Slightly larger icon on mobile */
+  }
+  
   .welcome-screen h2 {
-    font-size: 28px;
+    font-size: 20px;
   }
   
   .welcome-screen p {

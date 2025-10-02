@@ -18,6 +18,8 @@ function App() {
   const [lastAnswer, setLastAnswer] = useState(null);
   const [highlightedSource, setHighlightedSource] = useState(null);
   const [sourcesWidth, setSourcesWidth] = useState(480);
+  const [isWebSearching, setIsWebSearching] = useState(false);
+  const [accumulatedSources, setAccumulatedSources] = useState([]);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   
@@ -46,22 +48,91 @@ function App() {
     autoResizeTextarea();
   }, [autoResizeTextarea]);
 
+  // Function to merge and rearrange sources
+  const mergeAndRearrangeSources = useCallback((newSources, currentSources) => {
+    // If no new sources (e.g., web search with no citations), keep current sources
+    if (!newSources || newSources.length === 0) {
+      return currentSources;
+    }
+
+    // Create a map of existing sources by a unique key (doc_id + pageno)
+    const sourceMap = new Map();
+    currentSources.forEach(source => {
+      const key = `${source.doc_id}-${source.pageno}`;
+      sourceMap.set(key, source);
+    });
+
+    // Add new sources to the map (will overwrite if same key exists)
+    newSources.forEach(source => {
+      const key = `${source.doc_id}-${source.pageno}`;
+      sourceMap.set(key, source);
+    });
+
+    // Create array of all unique sources
+    const allSources = Array.from(sourceMap.values());
+
+    // Create a set of new source keys for quick lookup
+    const newSourceKeys = new Set(
+      newSources.map(s => `${s.doc_id}-${s.pageno}`)
+    );
+
+    // Separate sources into cited (in new response) and uncited
+    const citedSources = [];
+    const uncitedSources = [];
+
+    allSources.forEach(source => {
+      const key = `${source.doc_id}-${source.pageno}`;
+      if (newSourceKeys.has(key)) {
+        citedSources.push(source);
+      } else {
+        uncitedSources.push(source);
+      }
+    });
+
+    // Sort cited sources by their rank in the new response
+    citedSources.sort((a, b) => {
+      const aIndex = newSources.findIndex(s => 
+        s.doc_id === a.doc_id && s.pageno === a.pageno
+      );
+      const bIndex = newSources.findIndex(s => 
+        s.doc_id === b.doc_id && s.pageno === b.pageno
+      );
+      return aIndex - bIndex;
+    });
+
+    // Combine: cited sources on top, uncited sources below
+    const rearrangedSources = [...citedSources, ...uncitedSources];
+
+    // Reassign ranks sequentially
+    return rearrangedSources.map((source, index) => ({
+      ...source,
+      rank: index + 1
+    }));
+  }, []);
+
   // Handle sending messages with streaming API calls
-  const handleSendMessage = async (message, useWebSearch = false) => {
+  const handleSendMessage = async (message, useWebSearch = false, skipUserMessage = false) => {
     if (!message.trim() || isGenerating) return;
 
     // Clear any existing errors
     setError(null);
+    
+    // Set web search state
+    if (useWebSearch) {
+      setIsWebSearching(true);
+    }
 
-    // Add user message
-    const userMessage = {
-      id: Date.now(),
-      text: message,
-      sender: 'user',
-      timestamp: new Date()
-    };
+    // Add user message only if not skipping
+    if (!skipUserMessage) {
+      const userMessage = {
+        id: Date.now(),
+        text: message,
+        sender: 'user',
+        timestamp: new Date()
+      };
 
-    setMessages(prev => [...prev, userMessage]);
+      setMessages(prev => [...prev, userMessage]);
+    }
     setInputValue('');
     // Reset textarea height after sending
     if (inputRef.current) {
@@ -120,7 +191,7 @@ function App() {
         // onChunk callback - add to buffer instead of directly updating
         (accumulatedText, sources) => {
           streamBufferRef.current = accumulatedText;
-          // Update sources immediately
+          // Update sources immediately (not needed for display, but kept for debugging)
           setMessages(prev => prev.map(msg => 
             msg.id === botMessageId
               ? { ...msg, context: sources }
@@ -193,16 +264,51 @@ function App() {
           
           console.log('📊 TEXT: Updated answer text with new citations');
           
+          // Merge and rearrange sources with accumulated sources
+          const rearrangedSources = mergeAndRearrangeSources(context, accumulatedSources);
+          console.log('📊 SOURCES: Rearranged sources:', rearrangedSources.length);
+          
+          // Update accumulated sources
+          setAccumulatedSources(rearrangedSources);
+          
+          // Create a new citation mapping based on the rearranged sources
+          // Map from the temporary citation numbers to the actual ranks in accumulated sources
+          const finalCitationMapping = {};
+          Object.entries(citationMapping).forEach(([originalNum, tempNum]) => {
+            // Find the source in the rearranged sources
+            const sourceInContext = context[tempNum - 1];
+            if (sourceInContext) {
+              const sourceKey = `${sourceInContext.doc_id}-${sourceInContext.pageno}`;
+              const rearrangedIndex = rearrangedSources.findIndex(s => 
+                `${s.doc_id}-${s.pageno}` === sourceKey
+              );
+              if (rearrangedIndex !== -1) {
+                finalCitationMapping[tempNum] = rearrangedIndex + 1;
+              }
+            }
+          });
+          
+          console.log('📊 MAPPING: Final citation mapping to accumulated sources:', finalCitationMapping);
+          
+          // Update the answer text to use the final citation numbers
+          let finalAnswerText = updatedAnswerText;
+          Object.entries(finalCitationMapping).forEach(([tempNum, finalNum]) => {
+            const regex = new RegExp(`\\[${tempNum}\\]`, 'g');
+            finalAnswerText = finalAnswerText.replace(regex, `[${finalNum}]`);
+          });
+          
+          console.log('📊 TEXT: Final answer text with accumulated source citations');
+          
           const completedMessage = {
             id: botMessageId,
-            text: updatedAnswerText,
+            text: finalAnswerText,
             sender: 'bot',
             timestamp: new Date(),
             context: context,
             used_model: finalData.used_model,
             latency_ms: finalData.latency_ms,
             generation_time: (finalData.latency_ms / 1000).toFixed(3),
-            citation_mapping: citationMapping,
+            citation_mapping: finalCitationMapping,
             streaming: false,
             used_web_search: finalData.used_web_search || false
           };
@@ -212,6 +318,7 @@ function App() {
           ));
           setLastAnswer(completedMessage);
           setIsGenerating(false);
+          setIsWebSearching(false);
           
           // Clear buffer
           streamBufferRef.current = '';
@@ -230,6 +337,7 @@ function App() {
           // Remove the placeholder message
           setMessages(prev => prev.filter(msg => msg.id !== botMessageId));
           setIsGenerating(false);
+          setIsWebSearching(false);
           
           // Clear buffer
           streamBufferRef.current = '';
@@ -249,6 +357,7 @@ function App() {
       // Remove the placeholder message
       setMessages(prev => prev.filter(msg => msg.id !== botMessageId));
       setIsGenerating(false);
+      setIsWebSearching(false);
       
       // Clear buffer
       streamBufferRef.current = '';
@@ -301,7 +410,8 @@ function App() {
     if (messages.length > 0) {
       const lastUserMessage = [...messages].reverse().find(msg => msg.sender === 'user');
       if (lastUserMessage) {
-        handleSendMessage(lastUserMessage.text, true); // Use web search
+        // Don't add user message again, just start web search
+        handleSendMessage(lastUserMessage.text, true, true); // Use web search, skip user message
       }
     }
   };
@@ -319,6 +429,31 @@ function App() {
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
+  };
+
+  // Handle starting a new chat
+  const handleNewChat = () => {
+    setMessages([]);
+    setLastAnswer(null);
+    setAccumulatedSources([]);
+    setError(null);
+    setIsGenerating(false);
+    setIsWebSearching(false);
+    
+    // Clear streaming state
+    streamBufferRef.current = '';
+    displayedTextRef.current = '';
+    if (streamIntervalRef.current) {
+      clearInterval(streamIntervalRef.current);
+      streamIntervalRef.current = null;
+    }
+    
+    // Focus input after clearing
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
+    
+    console.log('✨ New chat started');
   };
 
   const handleResize = useCallback((newWidth) => {
@@ -358,7 +493,10 @@ function App() {
 
   return (
     <div className="app">
-      <NavBar activeTab={activeTab} onTabChange={handleTabChange} />
+      <NavBar 
+        activeTab={activeTab} 
+        onTabChange={handleTabChange}
+      />
       <ErrorBanner error={error} onDismiss={handleDismissError} />
       <div className="main-layout">
         {activeTab === 'chat' ? (
@@ -367,9 +505,9 @@ function App() {
               <div className="messages-container">
               {messages.length === 0 && (
                 <div className="welcome-screen">
-                  <div className="welcome-icon">✨</div>
-                  <h2>Welcome to Pryzm</h2>
-                  <p>Ask intelligent questions and get intelligent answers</p>
+                  <div className="welcome-icon">🐼</div>
+                  <h2>Welcome! ~ from Thien</h2>
+                  <p>Ask intelligent questions and get not-so-intelligent answers</p>
                 </div>
               )}
               
@@ -380,7 +518,7 @@ function App() {
                       {message.sender === 'bot' ? (
                         <AnswerText
                           text={message.text}
-                          context={message.context || []}
+                          context={accumulatedSources}
                           onCitationClick={handleCitationClick}
                           usedModel={message.used_model}
                           latencyMs={message.latency_ms}
@@ -388,6 +526,8 @@ function App() {
                           isStreaming={message.streaming || false}
                           onWebSearchRetry={handleWebSearchRetry}
                           usedWebSearch={message.used_web_search || false}
+                          isWebSearching={isWebSearching}
+                          isLastMessage={message.id === lastAnswer?.id}
                         />
                       ) : (
                         <div className="message-text">{message.text}</div>
@@ -416,6 +556,18 @@ function App() {
               <div className="input-container">
                 <form onSubmit={handleSubmit} className="input-form">
                   <div className="input-wrapper">
+                    {messages.length > 0 && (
+                      <button
+                        type="button"
+                        className="new-chat-button"
+                        onClick={handleNewChat}
+                        disabled={isGenerating}
+                        title="Start a new chat"
+                      >
+                        <span className="new-chat-icon">+</span>
+                        <span className="new-chat-text">New Chat</span>
+                      </button>
+                    )}
                     <textarea
                       ref={inputRef}
                       value={inputValue}
@@ -450,7 +602,7 @@ function App() {
             <ResizableDivider onResize={handleResize} />
             
             <SourcesPane 
-              context={lastAnswer?.context || []}
+              context={accumulatedSources}
               isLoading={isGenerating}
               hasError={!!error}
               errorMessage={error}

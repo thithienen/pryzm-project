@@ -124,11 +124,10 @@ INSTRUCTIONS:
 5. Include relevant details and context
 6. Format your response in clear markdown
 7. If you find conflicting information, mention the different perspectives
-8. Always cite your sources with clickable links"""
+8. Always cite your sources with clickable links
+9. At the end of your response, always ask if the user would like you to search for additional information on the web"""
 
-            user_message = f"""Question: {request.prompt}
-
-Please search the web for current information to answer this question comprehensively."""
+            user_message = f"""Please search the web for current information to answer this question comprehensively."""
             
             messages = [
                 {"role": "system", "content": system_message},
@@ -154,15 +153,16 @@ Please search the web for current information to answer this question comprehens
             # Step 5: Compose messages for LLM
             print(f"🟢 BACKEND: Step 5 - Composing LLM messages...")
             step_start = time.time()
-            system_message = """You are a helpful assistant that answers questions using ONLY the provided evidence.
+            system_message = """You are a helpful assistant that answers questions using ONLY information from your knowledge base and the documents available to you.
 
 CRITICAL RULES:
-1. ONLY use information from the EVIDENCE blocks below
+1. ONLY use information from the EVIDENCE blocks below (these are documents from your knowledge base)
 2. Cite EVERY claim using [n] where n is the evidence number
 3. If evidence is insufficient, explicitly say "Insufficient evidence"
 4. Prefer newer sources when multiple sources cover the same topic
 5. Use concise, clear language
 6. Format response in markdown with bullet points where appropriate
+7. When introducing your answer, say things like "Based on my knowledge base" or "According to the documents I have" rather than "Based on the provided evidence"
 
 When citing:
 - Place [n] immediately after the relevant statement
@@ -171,10 +171,10 @@ When citing:
 
             user_message = f"""Question: {request.prompt}
 
-EVIDENCE:
+EVIDENCE FROM YOUR KNOWLEDGE BASE:
 {context_block}
 
-Please answer the question using ONLY the evidence above. Remember to cite every claim with [n]."""
+Please answer the question using ONLY information from your knowledge base above. Remember to cite every claim with [n]."""
             
             messages = [
                 {"role": "system", "content": system_message},
@@ -467,11 +467,10 @@ INSTRUCTIONS:
 5. Include relevant details and context
 6. Format your response in clear markdown
 7. If you find conflicting information, mention the different perspectives
-8. Always cite your sources with clickable links"""
+8. Always cite your sources with clickable links
+9. At the end of your response, always ask if the user would like you to search for additional information on the web"""
 
-                user_message = f"""Question: {request.prompt}
-
-Please search the web for current information to answer this question comprehensively."""
+                user_message = f"""Please search the web for current information to answer this question comprehensively."""
             else:
                 evidence_blocks = []
                 for ev in context_data['evidence']:
@@ -482,15 +481,16 @@ Please search the web for current information to answer this question comprehens
                 context_block = "\n\n".join(evidence_blocks)
                 
                 # Step 6: Compose messages for LLM
-                system_message = """You are a helpful assistant that answers questions using ONLY the provided evidence.
+                system_message = """You are a helpful assistant that answers questions using ONLY information from your knowledge base and the documents available to you.
 
 CRITICAL RULES:
-1. ONLY use information from the EVIDENCE blocks below
+1. ONLY use information from the EVIDENCE blocks below (these are documents from your knowledge base)
 2. Cite EVERY claim using [n] where n is the evidence number
 3. If evidence is insufficient, explicitly say "Insufficient evidence"
 4. Prefer newer sources when multiple sources cover the same topic
 5. Use concise, clear language
 6. Format response in markdown with bullet points where appropriate
+7. When introducing your answer, say things like "Based on my knowledge base" or "According to the documents I have" rather than "Based on the provided evidence"
 
 When citing:
 - Place [n] immediately after the relevant statement
@@ -499,10 +499,10 @@ When citing:
 
                 user_message = f"""Question: {request.prompt}
 
-EVIDENCE:
+EVIDENCE FROM YOUR KNOWLEDGE BASE:
 {context_block}
 
-Please answer the question using ONLY the evidence above. Remember to cite every claim with [n]."""
+Please answer the question using ONLY information from your knowledge base above. Remember to cite every claim with [n]."""
             
             messages = [
                 {"role": "system", "content": system_message},
