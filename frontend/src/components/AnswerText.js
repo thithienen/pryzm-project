@@ -126,11 +126,10 @@ const AnswerText = ({
   };
 
   // Check for citation warnings
-  const citationPattern = /\[(\d+)\]/g;
+  // const citationPattern = /\[(\d+)\]/g;
 
   // Check if this is a "no evidence" response that suggests web search
-  const citationsFound = text.match(citationPattern) || [];
-  const hasNoCitations = citationsFound.length === 0;
+  // const citationsFound = text.match(citationPattern) || [];
   
   // Show web search button for the last message if:
   // 1. Not currently streaming
