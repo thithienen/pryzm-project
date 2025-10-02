@@ -22,8 +22,17 @@ const SourcesPane = ({
   useEffect(() => {
     console.log('📋 SOURCES: Context received:', context);
     console.log('📋 SOURCES: Context length:', context.length);
+    console.log('📋 SOURCES: Context type:', typeof context);
+    console.log('📋 SOURCES: Is context array?', Array.isArray(context));
     if (context.length > 0) {
       console.log('📋 SOURCES: First context item:', context[0]);
+      console.log('📋 SOURCES: First context item keys:', Object.keys(context[0]));
+      console.log('📋 SOURCES: First context item types:', Object.keys(context[0]).reduce((acc, key) => {
+        acc[key] = typeof context[0][key];
+        return acc;
+      }, {}));
+    } else {
+      console.log('📋 SOURCES: Empty context - this will cause red sources panel');
     }
   }, [context]);
 
@@ -141,7 +150,7 @@ const SourcesPane = ({
       </div>
       
       <div className="sources-content">
-        {isLoading && (
+        {isLoading && context.length === 0 && (
           <div className="sources-loading">
             <div className="sources-spinner"></div>
             <span>Retrieving sources...</span>
@@ -160,7 +169,7 @@ const SourcesPane = ({
           </div>
         )}
         
-        {!isLoading && !hasError && !showEmptyState && context.length > 0 && (
+        {!hasError && !showEmptyState && context.length > 0 && (
           <div className="sources-list">
             {context.map((item, index) => {
               const rank = item.rank || index + 1;

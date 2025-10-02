@@ -21,6 +21,12 @@ const AnswerText = ({
   const handleCitationClick = useCallback((citationNum) => {
     console.log('📖 CITATION LINK CLICKED:', citationNum);
     console.log('📖 Context length:', context.length);
+    console.log('📖 Context type:', typeof context);
+    console.log('📖 Context is array:', Array.isArray(context));
+    if (context.length > 0) {
+      console.log('📖 Context first item:', context[0]);
+      console.log('📖 Context first item keys:', Object.keys(context[0]));
+    }
     const now = Date.now();
     const lastClick = lastClickTime[citationNum] || 0;
     
@@ -47,7 +53,7 @@ const AnswerText = ({
     } else {
       console.warn('⚠️ onCitationClick handler not provided');
     }
-  }, [context.length, lastClickTime, onCitationClick]);
+  }, [context, lastClickTime, onCitationClick]);
 
   // Simple markdown parser for basic formatting
   const parseMarkdown = (text) => {
@@ -92,7 +98,9 @@ const AnswerText = ({
       }
       
       const citationNum = parseInt(match[1]);
-      const isValid = citationNum >= 1 && citationNum <= context.length;
+      // During streaming, default to valid (blue) unless we know it's definitely invalid
+      // After streaming, validate against context length
+      const isValid = isStreaming ? true : (citationNum >= 1 && citationNum <= context.length);
       
       // Add clickable citation
       parts.push(

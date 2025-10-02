@@ -45,6 +45,7 @@ Chatbot to answer defense-related questions.
   - A web search API is definitely needed for fine-grained control
 - Didn't have a lot of time to worry about design and responsiveness, might look like a total mess on mobile, idk.
 - No security, no password, no rate throttling, nothing, but technically nothing is at risk though, there's $3 in my OpenRouter account, worst case is someone spamming 13,000 questions and deplete my account 🤣
+- And debug messages everywhere, haven't cleaned them up yet...
 
 ## Note
 

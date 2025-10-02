@@ -81,6 +81,7 @@ function ReadmeView() {
                 </li>
                 <li>Didn't have a lot of time to worry about design and responsiveness, might look like a total mess on mobile, idk.</li>
                 <li>No security, no password, no rate throttling, nothing, but technically nothing is at risk though, there's $3 in my OpenRouter account, worst case is someone spamming 13,000 questions and deplete my account 🤣</li>
+                <li>And debug messages everywhere, haven't cleaned them up yet...</li>
               </ul>
             </div>
             

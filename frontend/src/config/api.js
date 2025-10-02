@@ -1,5 +1,5 @@
 // API Configuration
-const API_BASE_URL = process.env.REACT_APP_API_BASE || 'http://localhost:8000';
+const API_BASE_URL = process.env.REACT_APP_API_BASE || 'https://pryzm-api.thiennguyen.me';
 
 // Global fetch timeout (45 seconds - increased for reranking operations)
 const FETCH_TIMEOUT = 45000;
@@ -171,11 +171,15 @@ export const askQuestionStream = async (prompt, onChunk, onComplete, onError, us
         
         try {
           const jsonStr = line.substring(6); // Remove "data: " prefix
+          console.log('🔵 FRONTEND: Raw SSE line:', line);
+          console.log('🔵 FRONTEND: Parsing JSON:', jsonStr);
           const event = JSON.parse(jsonStr);
           
           console.log('🔵 FRONTEND: Received event:', event.type);
+          console.log('🔵 FRONTEND: Event data:', event);
           
           if (event.type === 'metadata') {
+            console.log('🔵 FRONTEND: ✅ METADATA EVENT RECEIVED!');
             // Store sources and metadata
             sources = event.sources;
             metadata = {
@@ -185,6 +189,14 @@ export const askQuestionStream = async (prompt, onChunk, onComplete, onError, us
               target_tokens: event.target_tokens
             };
             console.log('🔵 FRONTEND: Received', sources.length, 'sources');
+            console.log('🔵 FRONTEND: Sources data types:', sources.map(s => ({
+              evidence_id: s.evidence_id,
+              evidence_id_type: typeof s.evidence_id,
+              doc_id: s.doc_id,
+              doc_id_type: typeof s.doc_id
+            })));
+            console.log('🔵 FRONTEND: First source full object:', sources[0]);
+            console.log('🔵 FRONTEND: All sources array:', sources);
           } else if (event.type === 'content') {
             // Accumulate text and call onChunk callback
             accumulatedText += event.chunk;
@@ -194,14 +206,34 @@ export const askQuestionStream = async (prompt, onChunk, onComplete, onError, us
           } else if (event.type === 'done') {
             const elapsed = Date.now() - startTime;
             console.log('🔵 FRONTEND: ✅ Stream complete after', elapsed, 'ms');
+            
+            // FALLBACK: Get sources from done event if metadata event was missed
+            if (event.sources && event.sources.length > 0) {
+              console.log('🔵 FRONTEND: 🔄 FALLBACK - Using sources from done event');
+              sources = event.sources;
+              console.log('🔵 FRONTEND: 📊 Fallback sources count:', sources.length);
+            }
+            
+            // FALLBACK: Get metadata from done event if metadata event was missed
+            if (event.metadata && Object.keys(event.metadata).length > 0) {
+              console.log('🔵 FRONTEND: 🔄 FALLBACK - Using metadata from done event');
+              metadata = event.metadata;
+              console.log('🔵 FRONTEND: 📊 Fallback metadata:', metadata);
+            }
+            
+            console.log('🔵 FRONTEND: 📊 Final sources count:', sources.length);
+            console.log('🔵 FRONTEND: 📊 Final sources data:', sources);
+            console.log('🔵 FRONTEND: 📊 Final metadata:', metadata);
             if (onComplete) {
-              onComplete({
+              const finalData = {
                 answer_md: accumulatedText,
                 sources: sources,
-                used_model: metadata.used_model,
+                used_model: metadata.used_model || event.metadata?.used_model,
                 latency_ms: event.latency_ms,
                 metadata: metadata
-              });
+              };
+              console.log('🔵 FRONTEND: 📊 Calling onComplete with:', finalData);
+              onComplete(finalData);
             }
           } else if (event.type === 'error') {
             console.error('🔵 FRONTEND: ❌ Stream error:', event.message);

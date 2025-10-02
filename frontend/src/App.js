@@ -117,6 +117,9 @@ function App() {
     // Clear any existing errors
     setError(null);
     
+    // Debug: Log current sources before starting
+    console.log('🔍 DEBUG: Starting new message, current accumulatedSources:', accumulatedSources.length);
+    
     // Set web search state
     if (useWebSearch) {
       setIsWebSearching(true);
@@ -191,12 +194,8 @@ function App() {
         // onChunk callback - add to buffer instead of directly updating
         (accumulatedText, sources) => {
           streamBufferRef.current = accumulatedText;
-          // Update sources immediately (not needed for display, but kept for debugging)
-          setMessages(prev => prev.map(msg => 
-            msg.id === botMessageId
-              ? { ...msg, context: sources }
-              : msg
-          ));
+          // Don't update sources during streaming to avoid clearing the sources panel
+          // Sources will be updated only when streaming is complete
         },
         // onComplete callback - finalize message with metadata
         (finalData) => {
@@ -206,10 +205,21 @@ function App() {
             streamIntervalRef.current = null;
           }
           
-          const sources = finalData.sources || [];
+          let sources = finalData.sources || [];
           const answerText = finalData.answer_md || '';
           
           console.log('📊 SOURCES: Total sources received:', sources.length);
+          console.log('📊 SOURCES: Sources data:', sources);
+          console.log('📊 SOURCES: Used web search:', finalData.used_web_search);
+          console.log('📊 SOURCES: finalData object keys:', Object.keys(finalData));
+          console.log('📊 SOURCES: finalData.metadata:', finalData.metadata);
+          
+          // FALLBACK: If no sources from streaming, try to get them from metadata
+          if (sources.length === 0 && finalData.metadata && finalData.metadata.sources) {
+            console.log('📊 SOURCES: 🔄 FALLBACK - Using sources from metadata');
+            sources = finalData.metadata.sources;
+            console.log('📊 SOURCES: Fallback sources count:', sources.length);
+          }
           
           // Extract citation numbers from the answer text
           const citationPattern = /\[(\d+)\]/g;
@@ -223,13 +233,39 @@ function App() {
           }
           
           console.log('📊 CITATIONS: Found in text:', citationsInText);
+          console.log('📊 CITATIONS: Types in citationsInText:', citationsInText.map(c => typeof c));
           
-          // Filter sources to only include those referenced in the text
-          const filteredSources = sources.filter(source => 
-            citationsInText.includes(source.evidence_id)
-          );
+          // Debug: Log all sources before filtering
+          console.log('📊 SOURCES: All sources before filtering:', sources.length);
+          console.log('📊 SOURCES: Source evidence_id values:', sources.map(s => ({ 
+            evidence_id: s.evidence_id, 
+            type: typeof s.evidence_id,
+            doc_id: s.doc_id 
+          })));
+          
+          // Debug: Test the filtering logic step by step
+          console.log('📊 FILTERING: Testing each source...');
+          sources.forEach((source, index) => {
+            const isIncluded = citationsInText.includes(source.evidence_id);
+            const isIncludedAsNumber = citationsInText.includes(Number(source.evidence_id));
+            const isIncludedAsString = citationsInText.includes(String(source.evidence_id));
+            console.log(`📊 FILTERING: Source ${index}: evidence_id=${source.evidence_id} (${typeof source.evidence_id})`, {
+              isIncluded,
+              isIncludedAsNumber,
+              isIncludedAsString,
+              citationsInText
+            });
+          });
+          
+          // Use all sources returned by the API (filtering disabled due to server issues)
+          const filteredSources = sources;
           
           console.log('📊 SOURCES: Filtered sources:', filteredSources.length);
+          console.log('📊 SOURCES: Filtered sources details:', filteredSources.map(s => ({ 
+            evidence_id: s.evidence_id, 
+            type: typeof s.evidence_id,
+            doc_id: s.doc_id 
+          })));
           
           // Create a mapping from original citation numbers to new sequential numbers
           const citationMapping = {};
@@ -254,6 +290,15 @@ function App() {
           });
           
           console.log('📊 SOURCES: Mapped context:', context);
+          console.log('📊 SOURCES: Mapped context length:', context.length);
+          console.log('📊 SOURCES: Mapped context types:', context.map(c => ({
+            rank: c.rank,
+            rank_type: typeof c.rank,
+            doc_id: c.doc_id,
+            doc_id_type: typeof c.doc_id,
+            pageno: c.pageno,
+            pageno_type: typeof c.pageno
+          })));
           
           // Update the answer text to use new citation numbers
           let updatedAnswerText = answerText;
@@ -264,38 +309,51 @@ function App() {
           
           console.log('📊 TEXT: Updated answer text with new citations');
           
-          // Merge and rearrange sources with accumulated sources
-          const rearrangedSources = mergeAndRearrangeSources(context, accumulatedSources);
-          console.log('📊 SOURCES: Rearranged sources:', rearrangedSources.length);
-          
-          // Update accumulated sources
-          setAccumulatedSources(rearrangedSources);
+          // For web search, don't update sources - keep the previous ones
+          let rearrangedSources = accumulatedSources; // Default to current sources
+          if (finalData.used_web_search) {
+            console.log('📊 SOURCES: Web search detected - keeping previous sources');
+            // Don't update accumulatedSources for web search
+          } else {
+            // Merge and rearrange sources with accumulated sources
+            rearrangedSources = mergeAndRearrangeSources(context, accumulatedSources);
+            console.log('📊 SOURCES: Rearranged sources:', rearrangedSources.length);
+            
+            // Update accumulated sources
+            setAccumulatedSources(rearrangedSources);
+          }
           
           // Create a new citation mapping based on the rearranged sources
           // Map from the temporary citation numbers to the actual ranks in accumulated sources
           const finalCitationMapping = {};
-          Object.entries(citationMapping).forEach(([originalNum, tempNum]) => {
-            // Find the source in the rearranged sources
-            const sourceInContext = context[tempNum - 1];
-            if (sourceInContext) {
-              const sourceKey = `${sourceInContext.doc_id}-${sourceInContext.pageno}`;
-              const rearrangedIndex = rearrangedSources.findIndex(s => 
-                `${s.doc_id}-${s.pageno}` === sourceKey
-              );
-              if (rearrangedIndex !== -1) {
-                finalCitationMapping[tempNum] = rearrangedIndex + 1;
-              }
-            }
-          });
-          
-          console.log('📊 MAPPING: Final citation mapping to accumulated sources:', finalCitationMapping);
-          
-          // Update the answer text to use the final citation numbers
           let finalAnswerText = updatedAnswerText;
-          Object.entries(finalCitationMapping).forEach(([tempNum, finalNum]) => {
-            const regex = new RegExp(`\\[${tempNum}\\]`, 'g');
-            finalAnswerText = finalAnswerText.replace(regex, `[${finalNum}]`);
-          });
+          
+          if (finalData.used_web_search) {
+            // For web search, don't try to map citations to sources
+            console.log('📊 MAPPING: Web search - skipping citation mapping');
+          } else {
+            Object.entries(citationMapping).forEach(([originalNum, tempNum]) => {
+              // Find the source in the rearranged sources
+              const sourceInContext = context[tempNum - 1];
+              if (sourceInContext) {
+                const sourceKey = `${sourceInContext.doc_id}-${sourceInContext.pageno}`;
+                const rearrangedIndex = rearrangedSources.findIndex(s => 
+                  `${s.doc_id}-${s.pageno}` === sourceKey
+                );
+                if (rearrangedIndex !== -1) {
+                  finalCitationMapping[tempNum] = rearrangedIndex + 1;
+                }
+              }
+            });
+            
+            console.log('📊 MAPPING: Final citation mapping to accumulated sources:', finalCitationMapping);
+            
+            // Update the answer text to use the final citation numbers
+            Object.entries(finalCitationMapping).forEach(([tempNum, finalNum]) => {
+              const regex = new RegExp(`\\[${tempNum}\\]`, 'g');
+              finalAnswerText = finalAnswerText.replace(regex, `[${finalNum}]`);
+            });
+          }
           
           console.log('📊 TEXT: Final answer text with accumulated source citations');
           

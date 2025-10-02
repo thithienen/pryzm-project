@@ -127,7 +127,9 @@ INSTRUCTIONS:
 8. Always cite your sources with clickable links
 9. At the end of your response, always ask if the user would like you to search for additional information on the web"""
 
-            user_message = f"""Please search the web for current information to answer this question comprehensively."""
+            user_message = f"""Please search the web for current information to answer this question comprehensively:
+
+{request.prompt}"""
             
             messages = [
                 {"role": "system", "content": system_message},
@@ -348,6 +350,7 @@ async def answer_question_stream(request: AnswerRequest):
         print(f"\n🟢 BACKEND: ===== NEW STREAMING REQUEST =====")
         print(f"🟢 BACKEND: Received question: {request.prompt}")
         print(f"🟢 BACKEND: max_sources={request.max_sources}, use_reranking={request.use_reranking}, use_web_search={request.use_web_search}")
+        print(f"🟢 BACKEND: 📡 Starting streaming response generation...")
         
         try:
             # Step 1: Decide on search strategy
@@ -401,57 +404,61 @@ async def answer_question_stream(request: AnswerRequest):
             
             # Step 4: Convert evidence to EvidenceItem format
             evidence_items = []
+            print(f"🟢 BACKEND: 📊 Converting {len(context_data['evidence'])} evidence items to EvidenceItem format")
             if not request.use_web_search:
                 for ev in context_data['evidence']:
                     source_idx = ev['evidence_id'] - 1
                     orig_result = search_results[source_idx] if source_idx < len(search_results) else {}
                     
-                    evidence_item = {
-                        'evidence_id': ev['evidence_id'],
-                        'citation': ev['citation'],
-                        'doc_id': ev['doc_id'],
-                        'doc_title': ev['doc_title'],
-                        'doctype': ev.get('doctype'),
-                        'date': ev.get('date'),
-                        'page_range': ev['page_range'],
-                        'section_path': ev.get('section_path', []),
-                        'text': ev['text'],
-                        'source_url': ev['source_url'],
-                        'chunk_ids': ev['chunk_ids'],
-                        'token_count': ev['token_count'],
-                        'rerank_score': orig_result.get('rerank_score'),
-                        'rrf_score': orig_result.get('rrf_score'),
-                        'bm25_score': orig_result.get('bm25_score'),
-                        'faiss_score': orig_result.get('faiss_score')
-                    }
+                    evidence_item = EvidenceItem(
+                        evidence_id=ev['evidence_id'],
+                        citation=ev['citation'],
+                        doc_id=ev['doc_id'],
+                        doc_title=ev['doc_title'],
+                        doctype=ev.get('doctype'),
+                        date=ev.get('date'),
+                        page_range=ev['page_range'],
+                        section_path=ev.get('section_path', []),
+                        text=ev['text'],
+                        source_url=ev['source_url'],
+                        chunk_ids=ev['chunk_ids'],
+                        token_count=ev['token_count'],
+                        rerank_score=orig_result.get('rerank_score'),
+                        rrf_score=orig_result.get('rrf_score'),
+                        bm25_score=orig_result.get('bm25_score'),
+                        faiss_score=orig_result.get('faiss_score')
+                    )
                     evidence_items.append(evidence_item)
+                    print(f"🟢 BACKEND: 📊 Created evidence item {len(evidence_items)}: evidence_id={evidence_item.evidence_id}, doc_id={evidence_item.doc_id}")
             else:
                 # For web search, create a placeholder evidence item
-                evidence_item = {
-                    'evidence_id': 1,
-                    'citation': 'Web Search Results',
-                    'doc_id': 'web_search',
-                    'doc_title': 'Current Web Information',
-                    'doctype': 'web',
-                    'date': 'current',
-                    'page_range': [1],
-                    'section_path': ['web'],
-                    'text': 'Information sourced from current web search results',
-                    'source_url': 'web://search',
-                    'chunk_ids': ['web_1'],
-                    'token_count': 0
-                }
+                evidence_item = EvidenceItem(
+                    evidence_id=1,
+                    citation='Web Search Results',
+                    doc_id='web_search',
+                    doc_title='Current Web Information',
+                    doctype='web',
+                    date='current',
+                    page_range=[1],
+                    section_path=['web'],
+                    text='Information sourced from current web search results',
+                    source_url='web://search',
+                    chunk_ids=['web_1'],
+                    token_count=0
+                )
                 evidence_items.append(evidence_item)
             
             # Send metadata with sources first
             metadata = {
                 'type': 'metadata',
-                'sources': evidence_items,
+                'sources': [item.dict() for item in evidence_items],
                 'used_model': OPENROUTER_MODEL,
                 'total_sources': len(evidence_items),
                 'total_tokens': context_data['metadata'].get('total_tokens', 0),
                 'target_tokens': context_data['metadata'].get('target_tokens', 0)
             }
+            print(f"🟢 BACKEND: 📡 SENDING METADATA EVENT with {len(evidence_items)} sources")
+            print(f"🟢 BACKEND: 📡 Sources data:", [{"evidence_id": item.evidence_id, "doc_id": item.doc_id} for item in evidence_items])
             yield f"data: {json.dumps(metadata)}\n\n"
             
             # Step 5: Build context for LLM
@@ -470,7 +477,9 @@ INSTRUCTIONS:
 8. Always cite your sources with clickable links
 9. At the end of your response, always ask if the user would like you to search for additional information on the web"""
 
-                user_message = f"""Please search the web for current information to answer this question comprehensively."""
+                user_message = f"""Please search the web for current information to answer this question comprehensively:
+
+{request.prompt}"""
             else:
                 evidence_blocks = []
                 for ev in context_data['evidence']:
@@ -523,10 +532,22 @@ Please answer the question using ONLY information from your knowledge base above
                     # Send content chunk
                     yield f"data: {json.dumps({'type': 'content', 'chunk': chunk})}\n\n"
             
-            # Send completion
+            # Send completion with sources as fallback
             total_elapsed = time.time() - start_time
             print(f"🟢 BACKEND: ✅ Stream complete (total latency: {total_elapsed:.2f}s)")
-            yield f"data: {json.dumps({'type': 'done', 'latency_ms': int(total_elapsed * 1000)})}\n\n"
+            print(f"🟢 BACKEND: 📡 SENDING DONE EVENT with sources fallback")
+            done_event = {
+                'type': 'done', 
+                'latency_ms': int(total_elapsed * 1000),
+                'sources': [item.dict() for item in evidence_items],  # Include sources in done event
+                'metadata': {
+                    'used_model': OPENROUTER_MODEL,
+                    'total_sources': len(evidence_items),
+                    'total_tokens': context_data['metadata'].get('total_tokens', 0),
+                    'target_tokens': context_data['metadata'].get('target_tokens', 0)
+                }
+            }
+            yield f"data: {json.dumps(done_event)}\n\n"
             
         except Exception as e:
             elapsed = time.time() - start_time
